@@ -21,6 +21,8 @@ from .api import GeoSphereClient, GeoSphereError
 from .const import (
     CONF_AIR_QUALITY,
     CONF_DUST,
+    CONF_ENSEMBLE,
+    CONF_INCA,
     CONF_NOWCAST,
     CONF_WARNINGS,
     DOMAIN,
@@ -93,6 +95,8 @@ class GeoSphereOptionsFlow(OptionsFlow):
         schema = vol.Schema(
             {
                 vol.Required(CONF_NOWCAST, default=opts.get(CONF_NOWCAST, True)): bool,
+                vol.Required(CONF_ENSEMBLE, default=opts.get(CONF_ENSEMBLE, True)): bool,
+                vol.Required(CONF_INCA, default=opts.get(CONF_INCA, True)): bool,
                 vol.Required(CONF_AIR_QUALITY, default=opts.get(CONF_AIR_QUALITY, True)): bool,
                 vol.Required(CONF_DUST, default=opts.get(CONF_DUST, True)): bool,
                 vol.Required(CONF_WARNINGS, default=opts.get(CONF_WARNINGS, True)): bool,

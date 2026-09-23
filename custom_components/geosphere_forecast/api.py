@@ -65,13 +65,38 @@ class GeoSphereClient:
         self, resource: str, parameters: list[str], lat: float, lon: float
     ) -> TimeSeries:
         """Punkt-Zeitreihe eines Forecast-Datensatzes abrufen."""
+        return await self._timeseries(f"forecast/{resource}", parameters, lat, lon, [])
+
+    async def historical(
+        self,
+        resource: str,
+        parameters: list[str],
+        lat: float,
+        lon: float,
+        start: datetime,
+        end: datetime,
+    ) -> TimeSeries:
+        """Punkt-Zeitreihe eines historischen/Analyse-Datensatzes abrufen."""
+        fmt = "%Y-%m-%dT%H:%M"
+        extra = [("start", start.strftime(fmt)), ("end", end.strftime(fmt))]
+        return await self._timeseries(f"historical/{resource}", parameters, lat, lon, extra)
+
+    async def _timeseries(
+        self,
+        path: str,
+        parameters: list[str],
+        lat: float,
+        lon: float,
+        extra: list[tuple[str, str]],
+    ) -> TimeSeries:
         params = [("parameters", p) for p in parameters]
         params.append(("lat_lon", f"{lat},{lon}"))
-        data = await self._get_json(f"{API_BASE}/{resource}", params)
+        params.extend(extra)
+        data = await self._get_json(f"{API_BASE}/{path}", params)
 
         features = data.get("features") or []
         if not features:
-            raise GeoSphereError(f"Keine Daten für {resource}")
+            raise GeoSphereError(f"Keine Daten für {path}")
         raw = features[0]["properties"]["parameters"]
         ref = data.get("reference_time")
         return TimeSeries(

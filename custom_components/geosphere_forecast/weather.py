@@ -27,6 +27,7 @@ _FORECAST_KEYS = {
     "datetime", "condition", "is_daytime", "native_temperature", "native_templow",
     "humidity", "cloud_coverage", "native_precipitation", "native_pressure",
     "native_wind_speed", "native_wind_gust_speed", "wind_bearing",
+    "precipitation_probability",
 }
 
 

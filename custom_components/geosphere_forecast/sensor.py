@@ -13,7 +13,6 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import (
-    CONCENTRATION_MICROGRAMS_PER_CUBIC_METER,
     DEGREE,
     PERCENTAGE,
     UnitOfIrradiance,
@@ -31,6 +30,13 @@ from homeassistant.util import dt as dt_util
 from .const import SYMBOL_TEXT, WARNING_LEVELS, WARNING_TYPES
 from .coordinator import GeoSphereConfigEntry, GeoSphereCoordinator, GeoSphereData, _sum
 from .entity import GeoSphereEntity
+
+try:  # HA >= 2026.x
+    from homeassistant.const import UnitOfDensity
+
+    MICROGRAMS_PER_M3 = UnitOfDensity.MICROGRAMS_PER_CUBIC_METER
+except ImportError:  # ältere Versionen
+    from homeassistant.const import CONCENTRATION_MICROGRAMS_PER_CUBIC_METER as MICROGRAMS_PER_M3
 
 Data = GeoSphereData
 
@@ -70,6 +76,56 @@ def _rest_of_today(key: str) -> Callable[[Data], Any]:
         )
 
     return fn
+
+
+def _rest_of_today_max(key: str) -> Callable[[Data], Any]:
+    def fn(d: Data) -> Any:
+        today = dt_util.now().date()
+        vals = [
+            h[key]
+            for h in d.hourly
+            if h.get(key) is not None
+            and dt_util.as_local(dt_util.parse_datetime(h["datetime"])).date() == today
+        ]
+        return max(vals) if vals else None
+
+    return fn
+
+
+def _daily_range(day: int, lo: str, hi: str) -> Callable[[Data], dict[str, Any]]:
+    """Ensemble-Bandbreite eines Tageswerts als Attribute."""
+
+    def fn(d: Data) -> dict[str, Any]:
+        if len(d.daily) <= day or d.daily[day].get(lo) is None:
+            return {}
+        return {"p10": d.daily[day][lo], "p90": d.daily[day][hi]}
+
+    return fn
+
+
+def _inca_latest(param: str) -> Callable[[Data], Any]:
+    def fn(d: Data) -> Any:
+        if d.inca is None or not d.inca.timestamps:
+            return None
+        return d.inca.get(param, len(d.inca.timestamps) - 1)
+
+    return fn
+
+
+def _inca_sum(param: str, hours: int) -> Callable[[Data], Any]:
+    def fn(d: Data) -> Any:
+        if d.inca is None or not d.inca.timestamps:
+            return None
+        n = len(d.inca.timestamps)
+        return _sum(d.inca.get(param, i) for i in range(max(0, n - hours), n))
+
+    return fn
+
+
+def _inca_attrs(d: Data) -> dict[str, Any]:
+    if d.inca is None or not d.inca.timestamps:
+        return {}
+    return {"measured_at": d.inca.timestamps[-1].isoformat()}
 
 
 def _chem_now(param: str) -> Callable[[Data], Any]:
@@ -191,6 +247,14 @@ def _dust(c: GeoSphereCoordinator) -> bool:
     return c.use_dust
 
 
+def _ens(c: GeoSphereCoordinator) -> bool:
+    return c.use_ensemble
+
+
+def _inca(c: GeoSphereCoordinator) -> bool:
+    return c.use_inca
+
+
 def _warn(c: GeoSphereCoordinator) -> bool:
     return c.use_warnings
 
@@ -308,23 +372,39 @@ SENSORS: tuple[GeoSphereSensorDescription, ...] = (
     GeoSphereSensorDescription(
         key="precipitation_tomorrow", translation_key="precipitation_tomorrow", **PRECIP,
         value_fn=_daily(1, "native_precipitation"),
+        attr_fn=_daily_range(1, "precip_p10", "precip_p90"),
+    ),
+    GeoSphereSensorDescription(
+        key="precipitation_probability_today", translation_key="precipitation_probability_today",
+        native_unit_of_measurement=PERCENTAGE, icon="mdi:weather-rainy",
+        value_fn=_rest_of_today_max("precipitation_probability"),
+        forecast_fn=_hourly("precipitation_probability"), enabled_fn=_ens,
+    ),
+    GeoSphereSensorDescription(
+        key="precipitation_probability_tomorrow", translation_key="precipitation_probability_tomorrow",
+        native_unit_of_measurement=PERCENTAGE, icon="mdi:weather-rainy",
+        value_fn=_daily(1, "precipitation_probability"), enabled_fn=_ens,
     ),
     # --- Tageswerte ---
     GeoSphereSensorDescription(
         key="temp_max_today", translation_key="temp_max_today", **TEMP,
         value_fn=_daily(0, "native_temperature"),
+        attr_fn=_daily_range(0, "temp_max_p10", "temp_max_p90"),
     ),
     GeoSphereSensorDescription(
         key="temp_min_today", translation_key="temp_min_today", **TEMP,
         value_fn=_daily(0, "native_templow"),
+        attr_fn=_daily_range(0, "templow_p10", "templow_p90"),
     ),
     GeoSphereSensorDescription(
         key="temp_max_tomorrow", translation_key="temp_max_tomorrow", **TEMP,
         value_fn=_daily(1, "native_temperature"),
+        attr_fn=_daily_range(1, "temp_max_p10", "temp_max_p90"),
     ),
     GeoSphereSensorDescription(
         key="temp_min_tomorrow", translation_key="temp_min_tomorrow", **TEMP,
         value_fn=_daily(1, "native_templow"),
+        attr_fn=_daily_range(1, "templow_p10", "templow_p90"),
     ),
     GeoSphereSensorDescription(
         key="sunshine_today", translation_key="sunshine_today", **SUN,
@@ -333,6 +413,27 @@ SENSORS: tuple[GeoSphereSensorDescription, ...] = (
     GeoSphereSensorDescription(
         key="sunshine_tomorrow", translation_key="sunshine_tomorrow", **SUN,
         value_fn=_daily(1, "sunshine_hours"),
+    ),
+    # --- INCA-Analyse: "gemessene" Werte am Standort (ca. 1 h verzögert) ---
+    GeoSphereSensorDescription(
+        key="inca_precipitation_1h", translation_key="inca_precipitation_1h", **PRECIP,
+        value_fn=_inca_latest("RR"), attr_fn=_inca_attrs, enabled_fn=_inca,
+    ),
+    GeoSphereSensorDescription(
+        key="inca_precipitation_24h", translation_key="inca_precipitation_24h", **PRECIP,
+        value_fn=_inca_sum("RR", 24), attr_fn=_inca_attrs, enabled_fn=_inca,
+    ),
+    GeoSphereSensorDescription(
+        key="inca_temperature", translation_key="inca_temperature", **TEMP,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=_inca_latest("T2M"), attr_fn=_inca_attrs, enabled_fn=_inca,
+    ),
+    GeoSphereSensorDescription(
+        key="inca_global_radiation", translation_key="inca_global_radiation",
+        device_class=SensorDeviceClass.IRRADIANCE,
+        native_unit_of_measurement=UnitOfIrradiance.WATTS_PER_SQUARE_METER,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=_inca_latest("GL"), attr_fn=_inca_attrs, enabled_fn=_inca,
     ),
     # --- Luftqualität ---
     GeoSphereSensorDescription(
@@ -346,7 +447,7 @@ SENSORS: tuple[GeoSphereSensorDescription, ...] = (
     *(
         GeoSphereSensorDescription(
             key=param, translation_key=param, device_class=dc,
-            native_unit_of_measurement=CONCENTRATION_MICROGRAMS_PER_CUBIC_METER,
+            native_unit_of_measurement=MICROGRAMS_PER_M3,
             state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1,
             value_fn=_chem_now(param), forecast_fn=_chem_forecast(param), enabled_fn=_air,
         )

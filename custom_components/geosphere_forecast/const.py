@@ -7,7 +7,7 @@ from datetime import timedelta
 DOMAIN = "geosphere_forecast"
 ATTRIBUTION = "Daten: GeoSphere Austria (CC BY 4.0)"
 
-API_BASE = "https://dataset.api.hub.geosphere.at/v1/timeseries/forecast"
+API_BASE = "https://dataset.api.hub.geosphere.at/v1/timeseries"
 WARNINGS_URL = "https://warnungen.zamg.at/wsapp/api/getWarningsForCoords"
 
 # Datensätze
@@ -16,6 +16,8 @@ NOWCAST_RESOURCE = "nowcast-v1-15min-1km"
 CHEM_RESOURCE = "chem-v2-1h-3km"
 AQI_RESOURCE = "chem_aqi-v1-1d-3km"
 DUST_RESOURCE = "chem_dust-v1-1h-0p2deg"
+ENSEMBLE_RESOURCE = "ensemble-v2-1h-1km"
+INCA_RESOURCE = "inca-v1-1h-1km"  # Analyse (historical), ca. 1 h verzögert
 
 NWP_PARAMS = [
     "2t", "2r", "10u", "10v", "10fg", "msl", "tcc", "tp", "rain", "sf",
@@ -23,6 +25,11 @@ NWP_PARAMS = [
 ]
 NOWCAST_PARAMS = ["t2m", "td", "rh2m", "ff", "fx", "dd", "rr", "pt"]
 CHEM_PARAMS = ["no2surf", "o3surf", "pm10surf", "pm25surf"]
+ENSEMBLE_PARAMS = ["2t_p10", "2t_p90", "tp_p10", "tp_p50", "tp_p90", "10fg_p90"]
+INCA_PARAMS = ["RR", "T2M", "GL"]
+INCA_HOURS = 24
+# Schwelle für "es regnet" bei der Wahrscheinlichkeitsschätzung (mm/h)
+PRECIP_THRESHOLD = 0.1
 
 # Abdeckung (lat_min, lon_min, lat_max, lon_max) laut /metadata
 NWP_BBOX = (43.002, 5.0317, 51.498, 22.568)
@@ -32,6 +39,8 @@ CONF_NOWCAST = "nowcast"
 CONF_AIR_QUALITY = "air_quality"
 CONF_WARNINGS = "warnings"
 CONF_DUST = "dust"
+CONF_ENSEMBLE = "ensemble"
+CONF_INCA = "inca"
 
 UPDATE_INTERVAL = timedelta(minutes=15)
 # NWP/Chemie werden nur alle 3 h bzw. 1x täglich neu gerechnet

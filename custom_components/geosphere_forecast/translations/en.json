@@ -26,7 +26,9 @@
           "nowcast": "Nowcast (15 min, 1 km) for current values",
           "air_quality": "Air quality (NO₂, O₃, particulates, AQI)",
           "warnings": "Weather warnings",
-          "dust": "Desert dust forecast (Europe, 5 days)"
+          "dust": "Desert dust forecast (Europe, 5 days)",
+          "ensemble": "Ensemble (precipitation probability, range)",
+          "inca": "INCA analysis (observed precipitation, temperature, radiation)"
         }
       }
     }
@@ -131,6 +133,24 @@
       },
       "dust_max_5d": {
         "name": "Desert dust max 5 days"
+      },
+      "precipitation_probability_today": {
+        "name": "Precipitation probability today"
+      },
+      "precipitation_probability_tomorrow": {
+        "name": "Precipitation probability tomorrow"
+      },
+      "inca_precipitation_1h": {
+        "name": "Precipitation last hour (analysis)"
+      },
+      "inca_precipitation_24h": {
+        "name": "Precipitation last 24 h (analysis)"
+      },
+      "inca_temperature": {
+        "name": "Temperature (analysis)"
+      },
+      "inca_global_radiation": {
+        "name": "Global radiation (analysis)"
       }
     }
   }

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 import math
 from typing import Any
@@ -23,15 +23,23 @@ from .const import (
     CONDITION_SEVERITY,
     CONF_AIR_QUALITY,
     CONF_DUST,
+    CONF_ENSEMBLE,
+    CONF_INCA,
     CONF_NOWCAST,
     CONF_WARNINGS,
     DOMAIN,
     DUST_RESOURCE,
+    ENSEMBLE_PARAMS,
+    ENSEMBLE_RESOURCE,
+    INCA_HOURS,
+    INCA_PARAMS,
+    INCA_RESOURCE,
     NOWCAST_BBOX,
     NOWCAST_PARAMS,
     NOWCAST_RESOURCE,
     NWP_PARAMS,
     NWP_RESOURCE,
+    PRECIP_THRESHOLD,
     SLOW_REFRESH,
     SYMBOL_CONDITION,
     UPDATE_INTERVAL,
@@ -56,6 +64,26 @@ def wind_from_uv(u: float | None, v: float | None) -> tuple[float | None, float 
     return round(speed, 1), round(bearing)
 
 
+def precip_probability(
+    q10: float | None, q50: float | None, q90: float | None
+) -> int | None:
+    """Wahrscheinlichkeit (%) für Niederschlag >= PRECIP_THRESHOLD.
+
+    Das Ensemble liefert nur die Perzentile 10/50/90 – dazwischen wird linear
+    interpoliert. Das ist eine Schätzung, keine echte Member-Auszählung.
+    """
+    if q10 is None or q50 is None or q90 is None:
+        return None
+    thr = PRECIP_THRESHOLD
+    if q10 >= thr:
+        return 90
+    if q50 >= thr:
+        return round(50 + 40 * (q50 - thr) / max(q50 - q10, 1e-6))
+    if q90 >= thr:
+        return round(10 + 40 * (q90 - thr) / max(q90 - q50, 1e-6))
+    return round(10 * max(q90, 0) / thr)
+
+
 def symbol_condition(symbol: float | None, is_day: bool = True) -> str | None:
     """GeoSphere Wettersymbol -> HA condition (inkl. clear-night)."""
     if symbol is None:
@@ -75,6 +103,8 @@ class GeoSphereData:
     chem: TimeSeries | None = None
     aqi: TimeSeries | None = None
     dust: TimeSeries | None = None
+    ensemble: TimeSeries | None = None
+    inca: TimeSeries | None = None
     warnings: list[dict[str, Any]] | None = None
     hourly: list[dict[str, Any]] = field(default_factory=list)
     daily: list[dict[str, Any]] = field(default_factory=list)
@@ -104,6 +134,8 @@ class GeoSphereCoordinator(DataUpdateCoordinator[GeoSphereData]):
         self.use_air_quality = opts.get(CONF_AIR_QUALITY, True)
         self.use_warnings = opts.get(CONF_WARNINGS, True)
         self.use_dust = opts.get(CONF_DUST, True)
+        self.use_ensemble = opts.get(CONF_ENSEMBLE, True)
+        self.use_inca = opts.get(CONF_INCA, True)
         self._slow_fetched: datetime | None = None
 
     async def _async_update_data(self) -> GeoSphereData:
@@ -159,6 +191,27 @@ class GeoSphereCoordinator(DataUpdateCoordinator[GeoSphereData]):
             else:
                 data.dust = prev.dust
 
+        if self.use_ensemble:
+            if slow_due or prev is None or prev.ensemble is None:
+                data.ensemble = await self._optional(
+                    self.client.forecast(ENSEMBLE_RESOURCE, ENSEMBLE_PARAMS, self.lat, self.lon),
+                    prev.ensemble if prev else None,
+                    "Ensemble",
+                )
+            else:
+                data.ensemble = prev.ensemble
+
+        if self.use_inca:
+            end = now.replace(minute=0, second=0, microsecond=0)
+            data.inca = await self._optional(
+                self.client.historical(
+                    INCA_RESOURCE, INCA_PARAMS, self.lat, self.lon,
+                    end - timedelta(hours=INCA_HOURS + 2), end,
+                ),
+                prev.inca if prev else None,
+                "INCA-Analyse",
+            )
+
         if self.use_warnings:
             data.warnings = await self._optional(
                 self.client.warnings(self.lat, self.lon),
@@ -166,7 +219,7 @@ class GeoSphereCoordinator(DataUpdateCoordinator[GeoSphereData]):
                 "Warnungen",
             )
 
-        data.hourly = build_hourly(nwp, now)
+        data.hourly = build_hourly(nwp, now, data.ensemble)
         data.daily = build_daily(data.hourly)
         data.current = build_current(data, now)
         return data
@@ -179,7 +232,9 @@ class GeoSphereCoordinator(DataUpdateCoordinator[GeoSphereData]):
             return fallback
 
 
-def build_hourly(nwp: TimeSeries, now: datetime) -> list[dict[str, Any]]:
+def build_hourly(
+    nwp: TimeSeries, now: datetime, ens: TimeSeries | None = None
+) -> list[dict[str, Any]]:
     """Stündliche Vorhersage.
 
     Akkumulierte Größen (tp, rain, sf, sund, 10fg) beziehen sich auf das
@@ -187,6 +242,12 @@ def build_hourly(nwp: TimeSeries, now: datetime) -> list[dict[str, Any]]:
     Zeitstempel selbst. Ein HA-Forecast-Eintrag beschreibt die Stunde *ab*
     seinem Zeitstempel – daher wird dafür der Wert von i+1 genommen.
     """
+    ens_idx = {ts: k for k, ts in enumerate(ens.timestamps)} if ens else {}
+
+    def e(param: str, ts: datetime) -> float | None:
+        k = ens_idx.get(ts)
+        return ens.get(param, k) if ens is not None and k is not None else None
+
     result: list[dict[str, Any]] = []
     for i in range(len(nwp.timestamps) - 1):
         start = nwp.timestamps[i]
@@ -197,6 +258,7 @@ def build_hourly(nwp: TimeSeries, now: datetime) -> list[dict[str, Any]]:
         radiation = g("ssrd", i + 1)
         is_day = radiation is not None and radiation > 0
         msl = g("msl", i)
+        nxt = nwp.timestamps[i + 1]
         result.append(
             {
                 "datetime": start.isoformat(),
@@ -218,6 +280,15 @@ def build_hourly(nwp: TimeSeries, now: datetime) -> list[dict[str, Any]]:
                 "snow_limit": g("snowlmt", i),
                 "cape": g("cape", i),
                 "symbol": g("sy", i),
+                # Ensemble-Bandbreite (10./90. Perzentil)
+                "precipitation_probability": precip_probability(
+                    e("tp_p10", nxt), e("tp_p50", nxt), e("tp_p90", nxt)
+                ),
+                "temp_p10": e("2t_p10", start),
+                "temp_p90": e("2t_p90", start),
+                "precip_p10": e("tp_p10", nxt),
+                "precip_p90": e("tp_p90", nxt),
+                "gust_p90": e("10fg_p90", nxt),
             }
         )
     return result
@@ -232,8 +303,9 @@ def build_daily(hourly: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     result = []
     for n, (day, hours) in enumerate(days.items()):
-        # Letzter, stark angeschnittener Tag würde Min/Max verfälschen
-        if n > 0 and len(hours) < 18:
+        # Das Modell reicht nur 61 h. Der letzte Tag ist fast immer angeschnitten,
+        # wird aber behalten: das HA-Frontend zeigt Vorhersagen erst ab 3 Einträgen.
+        if n > 0 and len(hours) < 6:
             continue
         temps = [h["native_temperature"] for h in hours if h["native_temperature"] is not None]
         day_hours = [h for h in hours if h["is_daytime"]] or hours
@@ -258,6 +330,18 @@ def build_daily(hourly: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 ),
                 "sunshine_hours": _div(_sum(h["sunshine_minutes"] for h in hours), 60),
                 "snow": _sum(h["snow"] for h in hours),
+                "hours_covered": len(hours),
+                "precipitation_probability": max(
+                    (h["precipitation_probability"] for h in hours if h["precipitation_probability"] is not None),
+                    default=None,
+                ),
+                "temp_max_p10": _max(h["temp_p10"] for h in hours),
+                "temp_max_p90": _max(h["temp_p90"] for h in hours),
+                "templow_p10": _min(h["temp_p10"] for h in hours),
+                "templow_p90": _min(h["temp_p90"] for h in hours),
+                # Summe der Stunden-Perzentile: grobe Näherung der Tages-Bandbreite
+                "precip_p10": _sum(h["precip_p10"] for h in hours),
+                "precip_p90": _sum(h["precip_p90"] for h in hours),
             }
         )
     return result
@@ -306,6 +390,16 @@ def _worst(conditions: list[str]) -> str | None:
     if not conditions:
         return None
     return max(conditions, key=lambda c: CONDITION_SEVERITY.index(c) if c in CONDITION_SEVERITY else 0)
+
+
+def _max(values: Any) -> float | None:
+    vals = [v for v in values if v is not None]
+    return max(vals) if vals else None
+
+
+def _min(values: Any) -> float | None:
+    vals = [v for v in values if v is not None]
+    return min(vals) if vals else None
 
 
 def _sum(values: Any) -> float | None:

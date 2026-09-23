@@ -26,7 +26,9 @@
           "nowcast": "Nowcast (15 min, 1 km) für aktuelle Werte",
           "air_quality": "Luftqualität (NO₂, O₃, Feinstaub, AQI)",
           "warnings": "Unwetterwarnungen",
-          "dust": "Wüstenstaub-Prognose (Europa, 5 Tage)"
+          "dust": "Wüstenstaub-Prognose (Europa, 5 Tage)",
+          "ensemble": "Ensemble (Regenwahrscheinlichkeit, Bandbreite)",
+          "inca": "INCA-Analyse (gemessener Niederschlag, Temperatur, Strahlung)"
         }
       }
     }
@@ -131,6 +133,24 @@
       },
       "dust_max_5d": {
         "name": "Wüstenstaub Maximum 5 Tage"
+      },
+      "precipitation_probability_today": {
+        "name": "Regenwahrscheinlichkeit heute"
+      },
+      "precipitation_probability_tomorrow": {
+        "name": "Regenwahrscheinlichkeit morgen"
+      },
+      "inca_precipitation_1h": {
+        "name": "Niederschlag letzte Stunde (Analyse)"
+      },
+      "inca_precipitation_24h": {
+        "name": "Niederschlag letzte 24 h (Analyse)"
+      },
+      "inca_temperature": {
+        "name": "Temperatur (Analyse)"
+      },
+      "inca_global_radiation": {
+        "name": "Globalstrahlung (Analyse)"
       }
     }
   }

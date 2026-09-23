@@ -8,6 +8,8 @@ Kein API-Key nötig. Daten: GeoSphere Austria, CC BY 4.0.
 | NWP | `nwp-v2-1h-1km` | Weather-Entity (stündlich ~53 h, täglich), Tages-Sensoren |
 | Nowcast | `nowcast-v1-15min-1km` | aktuelle Werte, Niederschlag nächste Stunde (nur Österreich) |
 | Luftqualität | `chem-v2-1h-3km`, `chem_aqi-v1-1d-3km` | NO₂, O₃, PM10, PM2.5, AQI |
+| Ensemble | `ensemble-v2-1h-1km` | Regenwahrscheinlichkeit (geschätzt aus 10./50./90. Perzentil), Bandbreite für Temperatur und Niederschlag |
+| INCA-Analyse | `inca-v1-1h-1km` | „gemessener“ Niederschlag (1 h / 24 h), Temperatur, Globalstrahlung am Standort, ca. 1 h verzögert |
 | Wüstenstaub | `chem_dust-v1-1h-0p2deg` | Staubsäule (mg/m²) jetzt, Max. 24 h, Max. 5 Tage + Zeitpunkt |
 | Warnungen | warnungen.zamg.at | Warnstufe + Details als Attribut |
 
