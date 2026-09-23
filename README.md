@@ -13,6 +13,7 @@ Kein API-Key nötig. Daten: GeoSphere Austria, CC BY 4.0.
 | Messstation | TAWES `tawes-v1-10min` | Messwerte der nächsten (oder gewählten) Station: Temperatur, Taupunkt, Feuchte, Wind, Druck, Niederschlag, Strahlung, Schneehöhe, Bodentemperatur |
 | Klima & Trockenheit | `winfore-v2-1d-1km`, `spartacus-v3-1d-1km` | Referenzverdunstung ET0, klimatische Wasserbilanz 7 Tage, SPEI 30/90/365, Temperaturabweichung vom Mittel 1991–2020 (ca. 2 Tage verzögert) |
 | Schneedecke | `snowgrid_cl-v2-1d-1km` | Schneehöhe und Schneelast am Standort (ca. 2 Tage verzögert) |
+| Verlängerung (optional) | Open-Meteo `geosphere_seamless` + Standardmodell | Tagesvorhersage auf 3–15 Tage (GeoSphere-Tage bleiben, danach ECMWF), UV-Index stündlich/täglich, gefühlte Temperatur |
 | Wüstenstaub | `chem_dust-v1-1h-0p2deg` | Staubsäule (mg/m²) jetzt, Max. 24 h, Max. 5 Tage + Zeitpunkt |
 | Warnungen | warnungen.zamg.at | Warnstufe + Details als Attribut |
 
@@ -28,6 +29,17 @@ Kein API-Key nötig. Daten: GeoSphere Austria, CC BY 4.0.
 | Unwetterwarnung aktiv (+ je Typ) | aktive Warnung ab Stufe gelb; Attribute: Stufe, bis wann, nächste Warnung |
 
 Die Wetter-Entity bietet stündliche, tägliche und Tag/Nacht-Vorhersage (06–18 / 18–06 Uhr).
+
+**Aktueller Zustand:** Grundlage ist das Modell-Wettersymbol. Zeigen Radar-Nowcast oder eine Station im Umkreis
+von 10 km *jetzt* Regen, Schnee oder Nebel (bzw. Trockenheit trotz Regensymbol), gilt die Beobachtung
+(Attribut `condition_source`). Ab 10,8 m/s Mittelwind wird `windy` / `windy-variant` angezeigt.
+
+**Zusatzfelder in der Vorhersage** (über `weather.get_forecasts`): `global_radiation`, `snow_limit`, `cape`,
+`sunshine_minutes` / `sunshine_hours`, `native_dew_point`, `uv_index`, `temp_p10`/`temp_p90`, `precip_p10`/`precip_p90`,
+`rain`, `snow`, `source` (geosphere / open-meteo).
+
+**Robustheit:** Schafft GeoSphere einen Parameter ab, wird er automatisch weggelassen statt die ganze Abfrage
+zu verlieren. Nach Fehlern wird nach 1, 2, 3, 5, 8, 13 min erneut versucht, bis dahin bleiben die letzten Daten erhalten.
 
 ## Installation
 

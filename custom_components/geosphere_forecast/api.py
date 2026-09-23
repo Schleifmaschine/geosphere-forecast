@@ -3,19 +3,38 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
 import aiohttp
 
-from .const import API_BASE, STATION_URL, WARNINGS_URL
+from .const import (
+    API_BASE,
+    OPEN_METEO_DAILY,
+    OPEN_METEO_MODEL,
+    OPEN_METEO_URL,
+    STATION_URL,
+    WARNINGS_URL,
+)
+
+_LOGGER = logging.getLogger(__name__)
 
 TIMEOUT = aiohttp.ClientTimeout(total=30)
 
 
 class GeoSphereError(Exception):
     """Fehler beim Abruf von GeoSphere-Daten."""
+
+
+class GeoSphereParamError(GeoSphereError):
+    """Die API kennt einzelne Parameter nicht (mehr)."""
+
+    def __init__(self, detail: str, params: set[str]) -> None:
+        super().__init__(f"Ungültige Parameter: {detail}")
+        self.params = params
 
 
 @dataclass
@@ -49,12 +68,18 @@ class GeoSphereClient:
 
     def __init__(self, session: aiohttp.ClientSession) -> None:
         self._session = session
+        # Parameter, die die API abgelehnt hat (pro Datensatz), werden nicht mehr angefragt
+        self._dropped: dict[str, set[str]] = {}
 
     async def _get_json(self, url: str, params: list[tuple[str, str]]) -> Any:
         try:
             async with self._session.get(url, params=params, timeout=TIMEOUT) as resp:
                 if resp.status == 400:
-                    detail = (await resp.json(content_type=None)).get("detail")
+                    detail = str((await resp.json(content_type=None)).get("detail"))
+                    # z. B. "Parameters {'foo', 'bar'} do not exist or access is denied"
+                    if (match := re.search(r"\{([^}]*)\}", detail)) and "arameter" in detail:
+                        names = {n.strip().strip("'\"") for n in match.group(1).split(",")}
+                        raise GeoSphereParamError(detail, names)
                     raise GeoSphereError(f"Ungültige Anfrage: {detail}")
                 resp.raise_for_status()
                 return await resp.json(content_type=None)
@@ -89,10 +114,26 @@ class GeoSphereClient:
         lon: float,
         extra: list[tuple[str, str]],
     ) -> TimeSeries:
-        params = [("parameters", p) for p in parameters]
-        params.append(("lat_lon", f"{lat},{lon}"))
-        params.extend(extra)
-        data = await self._get_json(f"{API_BASE}/{path}", params)
+        dropped = self._dropped.setdefault(path, set())
+        wanted = [p for p in parameters if p not in dropped]
+        while True:
+            params = [("parameters", p) for p in wanted]
+            params.append(("lat_lon", f"{lat},{lon}"))
+            params.extend(extra)
+            try:
+                data = await self._get_json(f"{API_BASE}/{path}", params)
+                break
+            except GeoSphereParamError as err:
+                bad = err.params & set(wanted)
+                if not bad or bad == set(wanted):
+                    raise
+                # Einzelne Parameter abgeschafft -> ohne sie weitermachen statt komplett auszufallen
+                _LOGGER.warning(
+                    "GeoSphere %s kennt die Parameter %s nicht mehr – sie werden ab jetzt weggelassen",
+                    path, ", ".join(sorted(bad)),
+                )
+                dropped |= bad
+                wanted = [p for p in wanted if p not in bad]
 
         features = data.get("features") or []
         if not features:
@@ -125,6 +166,36 @@ class GeoSphereClient:
             "time": datetime.fromisoformat(data["timestamps"][-1]),
             "values": {
                 name: (p.get("data") or [None])[-1] for name, p in raw.items()
+            },
+        }
+
+    async def open_meteo(self, lat: float, lon: float, days: int) -> dict[str, Any]:
+        """Tagesvorhersage (GeoSphere-seamless) + UV-Index (Standardmodell) von Open-Meteo."""
+        base = [
+            ("latitude", str(lat)), ("longitude", str(lon)), ("timezone", "auto"),
+            ("forecast_days", str(days)), ("wind_speed_unit", "ms"),
+        ]
+        daily = await self._get_json(
+            OPEN_METEO_URL,
+            [*base, ("models", OPEN_METEO_MODEL), ("daily", ",".join(OPEN_METEO_DAILY))],
+        )
+        # UV liefert geosphere_seamless nicht -> Standardmodell, täglich + stündlich
+        uv = await self._get_json(
+            OPEN_METEO_URL,
+            [*base, ("daily", "uv_index_max"), ("hourly", "uv_index"), ("timeformat", "unixtime")],
+        )
+        if "daily" not in daily or "daily" not in uv:
+            raise GeoSphereError(f"Open-Meteo: {daily.get('reason') or uv.get('reason')}")
+        return {
+            "daily": daily["daily"],
+            # Tageszeitstempel = lokale Mitternacht als Unixzeit -> lokales Datum
+            "uv_daily": {
+                datetime.fromtimestamp(t + uv.get("utc_offset_seconds", 0), UTC).date().isoformat(): v
+                for t, v in zip(uv["daily"]["time"], uv["daily"]["uv_index_max"], strict=False)
+            },
+            "uv_hourly": {
+                datetime.fromtimestamp(t, UTC): v
+                for t, v in zip(uv["hourly"]["time"], uv["hourly"]["uv_index"], strict=False)
             },
         }
 

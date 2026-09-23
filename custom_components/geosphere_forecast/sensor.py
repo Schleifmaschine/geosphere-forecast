@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -145,6 +146,31 @@ def _rain_attrs(d: Data) -> dict[str, Any]:
         "raining_now": window["raining_now"],
         "forecast_until": window["horizon"].isoformat() if window["horizon"] else None,
     }
+
+
+def _uv_day(day: int) -> Callable[[Data], Any]:
+    def fn(d: Data) -> Any:
+        if not d.open_meteo:
+            return None
+        target = (dt_util.now() + timedelta(days=day)).date().isoformat()
+        return d.open_meteo["uv_daily"].get(target)
+
+    return fn
+
+
+def _uv_forecast(d: Data) -> list[dict[str, Any]]:
+    if not d.open_meteo:
+        return []
+    now = dt_util.utcnow().replace(minute=0, second=0, microsecond=0)
+    return [
+        {"datetime": ts.isoformat(), "value": v}
+        for ts, v in sorted(d.open_meteo["uv_hourly"].items())
+        if ts >= now and v is not None
+    ][:72]
+
+
+def _extended(c: GeoSphereCoordinator) -> bool:
+    return c.use_extended
 
 
 def _station(param: str, scale: float = 1) -> Callable[[Data], Any]:
@@ -614,6 +640,21 @@ SENSORS: tuple[GeoSphereSensorDescription, ...] = (
         icon="mdi:home-roof", state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=0,
         value_fn=_daily_last("snowgrid", "swe_tot"),
         attr_fn=_daily_date("snowgrid", "swe_tot"), enabled_fn=_snow,
+    ),
+    # --- UV (Open-Meteo, nur mit Vorhersage-Verlängerung) ---
+    GeoSphereSensorDescription(
+        key="uv_index", translation_key="uv_index", icon="mdi:sun-wireless",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda d: d.current.get("uv_index"), forecast_fn=_uv_forecast,
+        enabled_fn=_extended,
+    ),
+    GeoSphereSensorDescription(
+        key="uv_index_today", translation_key="uv_index_today", icon="mdi:sun-wireless",
+        value_fn=_uv_day(0), enabled_fn=_extended,
+    ),
+    GeoSphereSensorDescription(
+        key="uv_index_tomorrow", translation_key="uv_index_tomorrow", icon="mdi:sun-wireless",
+        value_fn=_uv_day(1), enabled_fn=_extended,
     ),
     # --- Luftqualität ---
     GeoSphereSensorDescription(

@@ -31,7 +31,9 @@
           "inca": "INCA-Analyse (gemessener Niederschlag, Temperatur, Strahlung)",
           "station": "Messstation (TAWES)",
           "climate": "Klima & Trockenheit (Verdunstung, SPEI, Temperaturabweichung)",
-          "snow": "Schneedecke (Schneehöhe, Schneelast)"
+          "snow": "Schneedecke (Schneehöhe, Schneelast)",
+          "extended": "Tagesvorhersage verlängern (Open-Meteo, inkl. UV-Index)",
+          "extended_days": "Tage in der Tagesvorhersage"
         }
       }
     }
@@ -226,6 +228,15 @@
       },
       "rain_end": {
         "name": "Regenende"
+      },
+      "uv_index": {
+        "name": "UV-Index"
+      },
+      "uv_index_today": {
+        "name": "UV-Index heute (Maximum)"
+      },
+      "uv_index_tomorrow": {
+        "name": "UV-Index morgen (Maximum)"
       }
     },
     "binary_sensor": {

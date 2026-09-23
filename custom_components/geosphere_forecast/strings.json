@@ -31,7 +31,9 @@
           "inca": "INCA analysis (observed precipitation, temperature, radiation)",
           "station": "Weather station (TAWES)",
           "climate": "Climate & drought (evapotranspiration, SPEI, temperature anomaly)",
-          "snow": "Snow cover (depth, load)"
+          "snow": "Snow cover (depth, load)",
+          "extended": "Extend daily forecast (Open-Meteo, incl. UV index)",
+          "extended_days": "Days in the daily forecast"
         }
       }
     }
@@ -226,6 +228,15 @@
       },
       "rain_end": {
         "name": "Rain end"
+      },
+      "uv_index": {
+        "name": "UV index"
+      },
+      "uv_index_today": {
+        "name": "UV index today (max)"
+      },
+      "uv_index_tomorrow": {
+        "name": "UV index tomorrow (max)"
       }
     },
     "binary_sensor": {

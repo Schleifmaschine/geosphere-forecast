@@ -17,6 +17,9 @@ from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
     LocationSelector,
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
     SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
@@ -29,13 +32,17 @@ from .const import (
     CONF_AIR_QUALITY,
     CONF_CLIMATE,
     CONF_DUST,
+    CONF_EXTENDED,
+    CONF_EXTENDED_DAYS,
     CONF_ENSEMBLE,
     CONF_INCA,
     CONF_NOWCAST,
     CONF_SNOW,
     CONF_STATION,
     CONF_WARNINGS,
+    DEFAULT_EXTENDED_DAYS,
     DOMAIN,
+    MAX_EXTENDED_DAYS,
     NWP_BBOX,
     NWP_RESOURCE,
     STATION_AUTO,
@@ -127,6 +134,13 @@ class GeoSphereOptionsFlow(OptionsFlow):
                     SelectSelectorConfig(options=station_options, mode=SelectSelectorMode.DROPDOWN)
                 ),
                 vol.Required(CONF_NOWCAST, default=opts.get(CONF_NOWCAST, True)): bool,
+                vol.Required(CONF_EXTENDED, default=opts.get(CONF_EXTENDED, False)): bool,
+                vol.Required(
+                    CONF_EXTENDED_DAYS,
+                    default=opts.get(CONF_EXTENDED_DAYS, DEFAULT_EXTENDED_DAYS),
+                ): NumberSelector(
+                    NumberSelectorConfig(min=3, max=MAX_EXTENDED_DAYS, step=1, mode=NumberSelectorMode.SLIDER)
+                ),
                 vol.Required(CONF_ENSEMBLE, default=opts.get(CONF_ENSEMBLE, True)): bool,
                 vol.Required(CONF_INCA, default=opts.get(CONF_INCA, True)): bool,
                 vol.Required(CONF_AIR_QUALITY, default=opts.get(CONF_AIR_QUALITY, True)): bool,

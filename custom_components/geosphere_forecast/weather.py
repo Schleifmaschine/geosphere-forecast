@@ -18,17 +18,14 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import SYMBOL_TEXT
+from .const import ATTRIBUTION, SYMBOL_TEXT
 from .coordinator import GeoSphereConfigEntry, GeoSphereCoordinator
 from .entity import GeoSphereEntity
 
-# Nur diese Keys kennt HA im Forecast; Zusatzwerte bleiben in den Sensoren
-_FORECAST_KEYS = {
-    "datetime", "condition", "is_daytime", "native_temperature", "native_templow",
-    "humidity", "cloud_coverage", "native_precipitation", "native_pressure",
-    "native_wind_speed", "native_wind_gust_speed", "wind_bearing",
-    "precipitation_probability",
-}
+# Interne Hilfsfelder, die nicht in die Vorhersage gehören. Alle übrigen
+# Zusatzfelder (Strahlung, Schneefallgrenze, CAPE, Sonnenschein, Bandbreiten …)
+# reicht HA unverändert durch – nutzbar über weather.get_forecasts.
+_INTERNAL_KEYS = {"symbol", "hours_covered", "date"}
 
 
 async def async_setup_entry(
@@ -98,6 +95,16 @@ class GeoSphereWeather(GeoSphereEntity, SingleCoordinatorWeatherEntity[GeoSphere
         return self._cur.get("cloud_coverage")
 
     @property
+    def uv_index(self) -> float | None:
+        return self._cur.get("uv_index")
+
+    @property
+    def attribution(self) -> str:
+        if self.coordinator.use_extended:
+            return f"{ATTRIBUTION}; Tage ab Modellende: Open-Meteo (CC BY 4.0)"
+        return ATTRIBUTION
+
+    @property
     def extra_state_attributes(self) -> dict[str, Any]:
         sy = self._cur.get("symbol")
         ref = self.coordinator.data.nwp.reference_time
@@ -105,6 +112,7 @@ class GeoSphereWeather(GeoSphereEntity, SingleCoordinatorWeatherEntity[GeoSphere
             "weather_symbol": int(sy) if sy is not None else None,
             "weather_text": SYMBOL_TEXT.get(int(sy)) if sy is not None else None,
             "model_run": ref.isoformat() if ref else None,
+            "condition_source": self._cur.get("condition_source"),
         }
 
     @callback
@@ -122,6 +130,6 @@ class GeoSphereWeather(GeoSphereEntity, SingleCoordinatorWeatherEntity[GeoSphere
 
 def _clean(items: list[dict[str, Any]]) -> list[Forecast]:
     return [
-        Forecast(**{k: v for k, v in item.items() if k in _FORECAST_KEYS and v is not None})
+        Forecast(**{k: v for k, v in item.items() if k not in _INTERNAL_KEYS and v is not None})
         for item in items
     ]

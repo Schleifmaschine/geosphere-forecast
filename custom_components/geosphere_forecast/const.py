@@ -9,6 +9,15 @@ ATTRIBUTION = "Daten: GeoSphere Austria (CC BY 4.0)"
 
 API_BASE = "https://dataset.api.hub.geosphere.at/v1/timeseries"
 STATION_URL = "https://dataset.api.hub.geosphere.at/v1/station/current/tawes-v1-10min"
+OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+# Nahtlos: GeoSphere-Modelle (AROME) für die ersten Tage, danach ECMWF
+OPEN_METEO_MODEL = "geosphere_seamless"
+OPEN_METEO_DAILY = [
+    "weather_code", "temperature_2m_max", "temperature_2m_min",
+    "apparent_temperature_max", "precipitation_sum", "precipitation_probability_max",
+    "wind_speed_10m_max", "wind_gusts_10m_max", "wind_direction_10m_dominant",
+    "sunshine_duration", "cloud_cover_mean", "relative_humidity_2m_mean",
+]
 WARNINGS_URL = "https://warnungen.zamg.at/wsapp/api/getWarningsForCoords"
 
 # Datensätze
@@ -52,6 +61,18 @@ THUNDER_CAPE_PRECIP = 0.5  # mm/h zusammen mit hoher CAPE
 IRRIGATION_BALANCE = -10.0  # mm Wasserbilanz über 7 Tage
 IRRIGATION_MAX_RAIN_24H = 2.0  # mm erwarteter Regen, ab dem nicht bewässert wird
 
+# Wind: ab Beaufort 6 (10,8 m/s Mittelwind) "windy" statt sonnig/bewölkt
+WIND_STRONG = 10.8
+
+# Aktueller Zustand aus Beobachtung (Nowcast / nahe Station)
+OBS_RAIN_RATE = 0.3  # mm/h ab dem "es regnet jetzt" gilt
+OBS_HEAVY_RATE = 6.0  # mm/h Starkregen
+OBS_SNOW_TEMP = 0.5  # °C darunter Schnee
+OBS_SLEET_TEMP = 2.0  # °C darunter Schneeregen
+OBS_FOG_HUMIDITY = 97  # %
+OBS_FOG_WIND = 2.0  # m/s
+OBS_STATION_MAX_KM = 10.0  # Station nur bis zu dieser Entfernung für den Zustand nutzen
+
 # Tag/Nacht-Vorhersage: Tag = 06–18 Uhr Ortszeit
 DAY_START_HOUR = 6
 DAY_END_HOUR = 18
@@ -69,6 +90,10 @@ CONF_INCA = "inca"
 CONF_STATION = "station"
 CONF_CLIMATE = "climate"
 CONF_SNOW = "snow"
+CONF_EXTENDED = "extended"
+CONF_EXTENDED_DAYS = "extended_days"
+DEFAULT_EXTENDED_DAYS = 10
+MAX_EXTENDED_DAYS = 15
 STATION_AUTO = "auto"
 STATION_NONE = "none"
 
@@ -77,6 +102,8 @@ UPDATE_INTERVAL = timedelta(minutes=15)
 SLOW_REFRESH = timedelta(minutes=60)
 # Tagesdaten (WINFORE, SNOWGRID, SPARTACUS) ändern sich höchstens 1x täglich
 DAILY_REFRESH = timedelta(hours=6)
+# Schnellere Wiederholversuche nach einem Fehler (Fibonacci, Minuten)
+RETRY_MINUTES = [1, 2, 3, 5, 8, 13]
 
 # GeoSphere Wettersymbol (sy, 1–32) -> HA condition
 SYMBOL_CONDITION: dict[int, str] = {
@@ -109,9 +136,21 @@ SYMBOL_TEXT: dict[int, str] = {
 
 # Für die Tagesvorhersage gewinnt die "ungünstigste" Bedingung
 CONDITION_SEVERITY = [
-    "sunny", "partlycloudy", "cloudy", "fog", "rainy",
-    "snowy-rainy", "snowy", "pouring", "lightning-rainy",
+    "sunny", "clear-night", "partlycloudy", "windy", "cloudy", "windy-variant",
+    "fog", "rainy", "snowy-rainy", "snowy", "pouring", "hail", "lightning-rainy",
 ]
+PRECIP_CONDITIONS = {"rainy", "pouring", "snowy", "snowy-rainy", "hail"}
+
+# WMO-Wettercode (Open-Meteo) -> HA condition
+WMO_CONDITION: dict[int, str] = {
+    0: "sunny", 1: "sunny", 2: "partlycloudy", 3: "cloudy",
+    45: "fog", 48: "fog",
+    51: "rainy", 53: "rainy", 55: "rainy", 56: "snowy-rainy", 57: "snowy-rainy",
+    61: "rainy", 63: "rainy", 65: "pouring", 66: "snowy-rainy", 67: "snowy-rainy",
+    71: "snowy", 73: "snowy", 75: "snowy", 77: "snowy",
+    80: "rainy", 81: "rainy", 82: "pouring", 85: "snowy", 86: "snowy",
+    95: "lightning-rainy", 96: "lightning-rainy", 99: "lightning-rainy",
+}
 
 WARNING_TYPES: dict[int, str] = {
     1: "Sturm", 2: "Regen", 3: "Schnee", 4: "Glatteis",

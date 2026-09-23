@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 import logging
 import math
 from typing import Any
@@ -24,6 +24,8 @@ from .const import (
     CONF_AIR_QUALITY,
     CONF_CLIMATE,
     CONF_DUST,
+    CONF_EXTENDED,
+    CONF_EXTENDED_DAYS,
     CONF_ENSEMBLE,
     CONF_INCA,
     CONF_NOWCAST,
@@ -33,6 +35,7 @@ from .const import (
     DAILY_DAYS,
     DAILY_REFRESH,
     DAY_END_HOUR,
+    DEFAULT_EXTENDED_DAYS,
     DAY_START_HOUR,
     DOMAIN,
     DUST_RESOURCE,
@@ -47,6 +50,14 @@ from .const import (
     NOWCAST_RESOURCE,
     NWP_PARAMS,
     NWP_RESOURCE,
+    OBS_FOG_HUMIDITY,
+    OBS_FOG_WIND,
+    OBS_HEAVY_RATE,
+    OBS_RAIN_RATE,
+    OBS_SLEET_TEMP,
+    OBS_SNOW_TEMP,
+    OBS_STATION_MAX_KM,
+    PRECIP_CONDITIONS,
     PRECIP_THRESHOLD,
     SNOW_PARAMS,
     SNOW_RESOURCE,
@@ -54,12 +65,15 @@ from .const import (
     SPARTACUS_RESOURCE,
     STATION_AUTO,
     STATION_NONE,
+    RETRY_MINUTES,
     SLOW_REFRESH,
     SYMBOL_CONDITION,
     TAWES_PARAMS,
     UPDATE_INTERVAL,
     WINFORE_PARAMS,
+    WIND_STRONG,
     WINFORE_RESOURCE,
+    WMO_CONDITION,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -122,6 +136,26 @@ def precip_probability(
     return round(10 * max(q90, 0) / thr)
 
 
+def apply_wind(condition: str | None, wind: float | None) -> str | None:
+    """Bei starkem Wind 'windy' / 'windy-variant' statt trockener Bedingung."""
+    if wind is None or wind < WIND_STRONG:
+        return condition
+    if condition in ("sunny", "clear-night"):
+        return "windy"
+    if condition in ("partlycloudy", "cloudy"):
+        return "windy-variant"
+    return condition
+
+
+def dew_point(temp: float | None, rh: float | None) -> float | None:
+    """Taupunkt nach Magnus."""
+    if temp is None or rh is None or rh <= 0:
+        return None
+    a, b = 17.62, 243.12
+    gamma = a * temp / (b + temp) + math.log(rh / 100)
+    return round(b * gamma / (a - gamma), 1)
+
+
 def symbol_condition(symbol: float | None, is_day: bool = True) -> str | None:
     """GeoSphere Wettersymbol -> HA condition (inkl. clear-night)."""
     if symbol is None:
@@ -147,6 +181,7 @@ class GeoSphereData:
     winfore: TimeSeries | None = None
     snowgrid: TimeSeries | None = None
     spartacus: TimeSeries | None = None
+    open_meteo: dict[str, Any] | None = None
     warnings: list[dict[str, Any]] | None = None
     hourly: list[dict[str, Any]] = field(default_factory=list)
     daily: list[dict[str, Any]] = field(default_factory=list)
@@ -184,13 +219,24 @@ class GeoSphereCoordinator(DataUpdateCoordinator[GeoSphereData]):
         self.station_option: str = opts.get(CONF_STATION, STATION_AUTO)
         # Metadaten der gewählten Station (id, name, altitude, distance_km)
         self.station_info: dict[str, Any] | None = None
+        self.use_extended = opts.get(CONF_EXTENDED, False)
+        self.extended_days = int(opts.get(CONF_EXTENDED_DAYS, DEFAULT_EXTENDED_DAYS))
         self._daily_fetched: datetime | None = None
         self._slow_fetched: datetime | None = None
+        # Fehler im aktuellen Lauf / aufeinanderfolgende Läufe mit Fehler
+        self._failed = False
+        self._fail_streak = 0
+        self._retry_slow = False
 
     async def _async_update_data(self) -> GeoSphereData:
         now = dt_util.utcnow()
         prev = self.data
-        slow_due = self._slow_fetched is None or now - self._slow_fetched >= SLOW_REFRESH
+        slow_due = (
+            self._slow_fetched is None
+            or now - self._slow_fetched >= SLOW_REFRESH
+            or self._retry_slow
+        )
+        self._failed = False
 
         # NWP ist Pflicht – ohne sie keine Entities
         if slow_due or prev is None:
@@ -200,6 +246,7 @@ class GeoSphereCoordinator(DataUpdateCoordinator[GeoSphereData]):
                 if prev is None:
                     raise UpdateFailed(str(err)) from err
                 _LOGGER.warning("NWP-Abruf fehlgeschlagen, verwende alte Daten: %s", err)
+                self._failed = True
                 nwp = prev.nwp
             else:
                 self._slow_fetched = now
@@ -261,6 +308,16 @@ class GeoSphereCoordinator(DataUpdateCoordinator[GeoSphereData]):
                 "INCA-Analyse",
             )
 
+        if self.use_extended:
+            if slow_due or prev is None or prev.open_meteo is None:
+                data.open_meteo = await self._optional(
+                    self.client.open_meteo(self.lat, self.lon, self.extended_days),
+                    prev.open_meteo if prev else None,
+                    "Open-Meteo",
+                )
+            else:
+                data.open_meteo = prev.open_meteo
+
         await self._update_station(data, prev)
         await self._update_daily(data, prev, now)
 
@@ -271,11 +328,28 @@ class GeoSphereCoordinator(DataUpdateCoordinator[GeoSphereData]):
                 "Warnungen",
             )
 
-        data.hourly = build_hourly(nwp, now, data.ensemble)
+        data.hourly = build_hourly(nwp, now, data.ensemble, data.open_meteo)
         data.daily = build_daily(data.hourly)
+        if data.open_meteo:
+            data.daily = merge_extended(data.daily, data.open_meteo, self.extended_days)
         data.twice_daily = build_twice_daily(data.hourly)
-        data.current = build_current(data, now)
+        data.current = build_current(data, now, self.station_info)
+        self._schedule_retry(slow_due)
         return data
+
+    def _schedule_retry(self, slow_due: bool) -> None:
+        """Nach Fehlern schneller erneut versuchen (1, 2, 3, 5, 8, 13 min)."""
+        if self._failed:
+            delay = RETRY_MINUTES[min(self._fail_streak, len(RETRY_MINUTES) - 1)]
+            self._fail_streak += 1
+            self.update_interval = min(timedelta(minutes=delay), UPDATE_INTERVAL)
+            # fehlgeschlagene stündliche Quellen beim nächsten Lauf erneut holen
+            self._retry_slow = slow_due
+            _LOGGER.debug("Teilweise Fehler – nächster Versuch in %s min", delay)
+        else:
+            self._fail_streak = 0
+            self._retry_slow = False
+            self.update_interval = UPDATE_INTERVAL
 
     async def _update_station(self, data: GeoSphereData, prev: GeoSphereData | None) -> None:
         """Messwerte der gewählten bzw. nächstgelegenen TAWES-Station."""
@@ -329,24 +403,32 @@ class GeoSphereCoordinator(DataUpdateCoordinator[GeoSphereData]):
                      ("spartacus", SPARTACUS_RESOURCE, SPARTACUS_PARAMS)]
         if self.use_snow:
             jobs.append(("snowgrid", SNOW_RESOURCE, SNOW_PARAMS))
+        failed_before = self._failed
+        self._failed = False
         for attr, resource, params in jobs:
             setattr(data, attr, await self._optional(
                 self.client.historical(resource, params, self.lat, self.lon, start, end),
                 getattr(prev, attr) if prev else None,
                 resource,
             ))
-        self._daily_fetched = now
+        if not self._failed:
+            self._daily_fetched = now
+        self._failed = self._failed or failed_before
 
     async def _optional(self, coro: Any, fallback: Any, label: str) -> Any:
         try:
             return await coro
         except GeoSphereError as err:
             _LOGGER.debug("%s nicht verfügbar: %s", label, err)
+            self._failed = True
             return fallback
 
 
 def build_hourly(
-    nwp: TimeSeries, now: datetime, ens: TimeSeries | None = None
+    nwp: TimeSeries,
+    now: datetime,
+    ens: TimeSeries | None = None,
+    om: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Stündliche Vorhersage.
 
@@ -375,10 +457,12 @@ def build_hourly(
         result.append(
             {
                 "datetime": start.isoformat(),
-                "condition": symbol_condition(g("sy", i), is_day),
+                "condition": apply_wind(symbol_condition(g("sy", i), is_day), speed),
                 "is_daytime": is_day,
                 "native_temperature": g("2t", i),
                 "humidity": g("2r", i),
+                "native_dew_point": dew_point(g("2t", i), g("2r", i)),
+                "uv_index": (om or {}).get("uv_hourly", {}).get(start),
                 "cloud_coverage": g("tcc", i),
                 "native_precipitation": g("tp", i + 1),
                 "native_pressure": round(msl / 100, 1) if msl is not None else None,
@@ -429,7 +513,10 @@ def build_daily(hourly: list[dict[str, Any]]) -> list[dict[str, Any]]:
         result.append(
             {
                 "datetime": dt_util.as_utc(start).isoformat(),
-                "condition": _worst(conditions),
+                "condition": apply_wind(
+                    _worst(conditions),
+                    strongest["native_wind_speed"] if strongest else None,
+                ),
                 "native_temperature": max(temps, default=None),
                 "native_templow": min(temps, default=None),
                 "native_precipitation": _sum(h["native_precipitation"] for h in hours),
@@ -483,6 +570,7 @@ def build_twice_daily(hourly: list[dict[str, Any]]) -> list[dict[str, Any]]:
             condition = "clear-night"
         winds = [h for h in hours if h["native_wind_speed"] is not None]
         strongest = max(winds, key=lambda h: h["native_wind_speed"], default=None)
+        condition = apply_wind(condition, strongest["native_wind_speed"] if strongest else None)
         result.append(
             {
                 "datetime": dt_util.as_utc(start).isoformat(),
@@ -535,7 +623,9 @@ def nowcast_rain_window(
     }
 
 
-def build_current(data: GeoSphereData, now: datetime) -> dict[str, Any]:
+def build_current(
+    data: GeoSphereData, now: datetime, station_info: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Aktuelle Werte – Nowcast (1 km, 15 min) hat Vorrang vor NWP."""
     nwp = data.nwp
     i = nwp.index_at(now)
@@ -572,7 +662,159 @@ def build_current(data: GeoSphereData, now: datetime) -> dict[str, Any]:
         # rr ist die Menge je 15-min-Intervall -> nächste Stunde = 4 Schritte
         cur["precipitation_next_hour"] = _sum(nc.get("rr", k) for k in range(j + 1, j + 5))
     cur["rain_window"] = nowcast_rain_window(data.nowcast, now)
+    cur["uv_index"] = _uv_now(data.open_meteo, now)
+
+    observed = observed_condition(data, now, cur, station_info)
+    cur["condition_source"] = "observation" if observed else "model"
+    if observed:
+        cur["condition"] = observed
+    cur["condition"] = apply_wind(cur["condition"], cur["wind_speed"])
     return cur
+
+
+def _uv_now(om: dict[str, Any] | None, now: datetime) -> float | None:
+    if not om or not om.get("uv_hourly"):
+        return None
+    hour = now.replace(minute=0, second=0, microsecond=0)
+    return om["uv_hourly"].get(hour)
+
+
+def observed_condition(
+    data: GeoSphereData,
+    now: datetime,
+    cur: dict[str, Any],
+    station_info: dict[str, Any] | None,
+) -> str | None:
+    """Korrigiert den Modellzustand mit dem, was *jetzt* beobachtet wird.
+
+    Quellen: Nowcast (Radar, 1 km – immer am Standort) und eine TAWES-Station,
+    sofern sie höchstens OBS_STATION_MAX_KM entfernt ist. Gibt None zurück,
+    wenn die Beobachtung nichts am Modellzustand ändert.
+    """
+    model = cur["condition"]
+    if model == "lightning-rainy":
+        return None
+
+    rates: list[float] = []
+    humidity = wind = None
+    temp = cur["temperature"]
+
+    if (nc := data.nowcast) is not None and nc.timestamps:
+        j = nc.index_at(now)
+        steps = [nc.get("rr", k) for k in (j, j + 1) if nc.get("rr", k) is not None]
+        if steps:
+            rates.append(max(steps) * 4)  # mm/15 min -> mm/h
+        humidity, wind = nc.get("rh2m", j), nc.get("ff", j)
+
+    near = (
+        station_info is not None
+        and station_info["distance_km"] <= OBS_STATION_MAX_KM
+        and data.station is not None
+    )
+    if near:
+        st = data.station["values"]
+        if st.get("RR") is not None:
+            rates.append(st["RR"] * 6)  # mm/10 min -> mm/h
+        # fehlende Stationswerte (None) nicht über Nowcast-Werte schreiben
+        humidity = st["RF"] if st.get("RF") is not None else humidity
+        wind = st["FFAM"] if st.get("FFAM") is not None else wind
+        temp = st["TL"] if st.get("TL") is not None else temp
+
+    if not rates:
+        return None
+    rate = max(rates)
+
+    if rate >= OBS_RAIN_RATE:
+        if temp is not None and temp <= OBS_SNOW_TEMP:
+            return "snowy" if model != "snowy" else None
+        if temp is not None and temp <= OBS_SLEET_TEMP:
+            return "snowy-rainy" if model != "snowy-rainy" else None
+        observed = "pouring" if rate >= OBS_HEAVY_RATE else "rainy"
+        return observed if model != observed else None
+
+    # Trocken, Modell sagt aber Niederschlag -> bewölkt
+    if model in PRECIP_CONDITIONS:
+        return "cloudy"
+    if (
+        humidity is not None and wind is not None
+        and humidity >= OBS_FOG_HUMIDITY and wind < OBS_FOG_WIND
+        and model != "fog"
+    ):
+        return "fog"
+    return None
+
+
+def merge_extended(
+    daily: list[dict[str, Any]], om: dict[str, Any], days: int
+) -> list[dict[str, Any]]:
+    """GeoSphere-Tage behalten, angeschnittene/fehlende Tage mit Open-Meteo auffüllen."""
+    extended = open_meteo_days(om)
+    by_date = {e["date"]: e for e in extended}
+
+    result: list[dict[str, Any]] = []
+    for n, day in enumerate(daily):
+        local_date = dt_util.as_local(datetime.fromisoformat(day["datetime"])).date()
+        if n > 0 and day.get("hours_covered", 24) < 18:
+            break  # ab hier übernimmt Open-Meteo
+        extra = by_date.get(local_date, {})
+        day = {
+            **day,
+            "source": "geosphere",
+            "uv_index": extra.get("uv_index"),
+            "native_apparent_temperature": extra.get("native_apparent_temperature"),
+        }
+        result.append(day)
+
+    last = (
+        dt_util.as_local(datetime.fromisoformat(result[-1]["datetime"])).date()
+        if result else date.min
+    )
+    for e in extended:
+        if len(result) >= days:
+            break
+        if e["date"] > last:
+            result.append({k: v for k, v in e.items() if k != "date"})
+    return result
+
+
+def open_meteo_days(om: dict[str, Any]) -> list[dict[str, Any]]:
+    """Open-Meteo-Tageswerte im Format der HA-Tagesvorhersage."""
+    d = om["daily"]
+    result = []
+    for i, day_str in enumerate(d["time"]):
+        def v(key: str, idx: int = i) -> Any:
+            arr = d.get(key)
+            return arr[idx] if arr and idx < len(arr) else None
+
+        if v("temperature_2m_max") is None:
+            continue
+        day = date.fromisoformat(day_str)
+        code = v("weather_code")
+        sunshine = v("sunshine_duration")
+        result.append(
+            {
+                "date": day,
+                "datetime": dt_util.as_utc(dt_util.start_of_local_day(day)).isoformat(),
+                "source": "open-meteo",
+                "condition": apply_wind(
+                    WMO_CONDITION.get(int(code)) if code is not None else None,
+                    v("wind_speed_10m_max"),
+                ),
+                "native_temperature": v("temperature_2m_max"),
+                "native_templow": v("temperature_2m_min"),
+                "native_apparent_temperature": v("apparent_temperature_max"),
+                "native_precipitation": v("precipitation_sum"),
+                "precipitation_probability": v("precipitation_probability_max"),
+                "native_wind_speed": v("wind_speed_10m_max"),
+                "native_wind_gust_speed": v("wind_gusts_10m_max"),
+                "wind_bearing": v("wind_direction_10m_dominant"),
+                "cloud_coverage": v("cloud_cover_mean"),
+                "humidity": v("relative_humidity_2m_mean"),
+                "sunshine_hours": round(sunshine / 3600, 1) if sunshine is not None else None,
+                "uv_index": om["uv_daily"].get(day_str),
+            }
+        )
+    return result
 
 
 def _worst(conditions: list[str]) -> str | None:
