@@ -220,6 +220,50 @@
       },
       "station_soil_temperature": {
         "name": "Station Bodentemperatur"
+      },
+      "rain_start": {
+        "name": "Regenbeginn"
+      },
+      "rain_end": {
+        "name": "Regenende"
+      }
+    },
+    "binary_sensor": {
+      "rain_next_hour": {
+        "name": "Regen in der nächsten Stunde"
+      },
+      "frost_tonight": {
+        "name": "Frostgefahr heute Nacht"
+      },
+      "thunderstorm_risk": {
+        "name": "Gewittergefahr (12 h)"
+      },
+      "irrigation_needed": {
+        "name": "Bewässerung nötig"
+      },
+      "warning_active": {
+        "name": "Unwetterwarnung aktiv"
+      },
+      "warning_storm": {
+        "name": "Warnung Sturm"
+      },
+      "warning_rain": {
+        "name": "Warnung Regen"
+      },
+      "warning_snow": {
+        "name": "Warnung Schnee"
+      },
+      "warning_ice": {
+        "name": "Warnung Glatteis"
+      },
+      "warning_thunderstorm": {
+        "name": "Warnung Gewitter"
+      },
+      "warning_heat": {
+        "name": "Warnung Hitze"
+      },
+      "warning_cold": {
+        "name": "Warnung Kälte"
       }
     }
   }

@@ -7,7 +7,7 @@ from homeassistant.core import HomeAssistant
 
 from .coordinator import GeoSphereConfigEntry, GeoSphereCoordinator
 
-PLATFORMS = (Platform.SENSOR, Platform.WEATHER)
+PLATFORMS = (Platform.BINARY_SENSOR, Platform.SENSOR, Platform.WEATHER)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: GeoSphereConfigEntry) -> bool:

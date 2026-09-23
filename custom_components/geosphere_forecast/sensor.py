@@ -129,6 +129,24 @@ def _inca_attrs(d: Data) -> dict[str, Any]:
     return {"measured_at": d.inca.timestamps[-1].isoformat()}
 
 
+def _rain_time(key: str) -> Callable[[Data], Any]:
+    def fn(d: Data) -> Any:
+        window = d.current.get("rain_window")
+        return window.get(key) if window else None
+
+    return fn
+
+
+def _rain_attrs(d: Data) -> dict[str, Any]:
+    window = d.current.get("rain_window")
+    if not window:
+        return {}
+    return {
+        "raining_now": window["raining_now"],
+        "forecast_until": window["horizon"].isoformat() if window["horizon"] else None,
+    }
+
+
 def _station(param: str, scale: float = 1) -> Callable[[Data], Any]:
     def fn(d: Data) -> Any:
         if d.station is None:
@@ -448,6 +466,16 @@ SENSORS: tuple[GeoSphereSensorDescription, ...] = (
     GeoSphereSensorDescription(
         key="precipitation_next_hour", translation_key="precipitation_next_hour", **PRECIP,
         value_fn=lambda d: d.current.get("precipitation_next_hour"), enabled_fn=_nowcast,
+    ),
+    GeoSphereSensorDescription(
+        key="rain_start", translation_key="rain_start", device_class=SensorDeviceClass.TIMESTAMP,
+        icon="mdi:weather-pouring",
+        value_fn=_rain_time("start"), attr_fn=_rain_attrs, enabled_fn=_nowcast,
+    ),
+    GeoSphereSensorDescription(
+        key="rain_end", translation_key="rain_end", device_class=SensorDeviceClass.TIMESTAMP,
+        icon="mdi:weather-partly-cloudy",
+        value_fn=_rain_time("end"), attr_fn=_rain_attrs, enabled_fn=_nowcast,
     ),
     GeoSphereSensorDescription(
         key="precipitation_today", translation_key="precipitation_today", **PRECIP,

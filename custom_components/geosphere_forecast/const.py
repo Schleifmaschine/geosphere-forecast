@@ -40,6 +40,21 @@ SPARTACUS_PARAMS = ["RR", "TM24a_1991_2020"]
 DAILY_DAYS = 35
 # Schwelle für "es regnet" bei der Wahrscheinlichkeitsschätzung (mm/h)
 PRECIP_THRESHOLD = 0.1
+# Nowcast: ab dieser Menge pro 15 min gilt ein Intervall als "nass"
+NOWCAST_WET_15MIN = 0.05
+
+# Schwellen der Binärsensoren
+FROST_THRESHOLD = 2.0  # °C in 2 m – darunter ist Bodenfrost möglich
+FROST_UNTIL_HOUR = 9  # "heute Nacht" = bis 09:00 Ortszeit
+THUNDER_HOURS = 12
+THUNDER_CAPE = 1000  # J/kg
+THUNDER_CAPE_PRECIP = 0.5  # mm/h zusammen mit hoher CAPE
+IRRIGATION_BALANCE = -10.0  # mm Wasserbilanz über 7 Tage
+IRRIGATION_MAX_RAIN_24H = 2.0  # mm erwarteter Regen, ab dem nicht bewässert wird
+
+# Tag/Nacht-Vorhersage: Tag = 06–18 Uhr Ortszeit
+DAY_START_HOUR = 6
+DAY_END_HOUR = 18
 
 # Abdeckung (lat_min, lon_min, lat_max, lon_max) laut /metadata
 NWP_BBOX = (43.002, 5.0317, 51.498, 22.568)

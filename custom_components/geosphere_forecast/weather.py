@@ -48,7 +48,9 @@ class GeoSphereWeather(GeoSphereEntity, SingleCoordinatorWeatherEntity[GeoSphere
     _attr_native_wind_speed_unit = UnitOfSpeed.METERS_PER_SECOND
     _attr_native_precipitation_unit = UnitOfPrecipitationDepth.MILLIMETERS
     _attr_supported_features = (
-        WeatherEntityFeature.FORECAST_HOURLY | WeatherEntityFeature.FORECAST_DAILY
+        WeatherEntityFeature.FORECAST_HOURLY
+        | WeatherEntityFeature.FORECAST_DAILY
+        | WeatherEntityFeature.FORECAST_TWICE_DAILY
     )
 
     def __init__(self, coordinator: GeoSphereCoordinator) -> None:
@@ -112,6 +114,10 @@ class GeoSphereWeather(GeoSphereEntity, SingleCoordinatorWeatherEntity[GeoSphere
     @callback
     def _async_forecast_daily(self) -> list[Forecast] | None:
         return _clean(self.coordinator.data.daily)
+
+    @callback
+    def _async_forecast_twice_daily(self) -> list[Forecast] | None:
+        return _clean(self.coordinator.data.twice_daily)
 
 
 def _clean(items: list[dict[str, Any]]) -> list[Forecast]:

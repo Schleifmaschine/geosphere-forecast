@@ -32,6 +32,8 @@ from .const import (
     CONF_WARNINGS,
     DAILY_DAYS,
     DAILY_REFRESH,
+    DAY_END_HOUR,
+    DAY_START_HOUR,
     DOMAIN,
     DUST_RESOURCE,
     ENSEMBLE_PARAMS,
@@ -41,6 +43,7 @@ from .const import (
     INCA_RESOURCE,
     NOWCAST_BBOX,
     NOWCAST_PARAMS,
+    NOWCAST_WET_15MIN,
     NOWCAST_RESOURCE,
     NWP_PARAMS,
     NWP_RESOURCE,
@@ -147,6 +150,7 @@ class GeoSphereData:
     warnings: list[dict[str, Any]] | None = None
     hourly: list[dict[str, Any]] = field(default_factory=list)
     daily: list[dict[str, Any]] = field(default_factory=list)
+    twice_daily: list[dict[str, Any]] = field(default_factory=list)
     current: dict[str, Any] = field(default_factory=dict)
 
 
@@ -269,6 +273,7 @@ class GeoSphereCoordinator(DataUpdateCoordinator[GeoSphereData]):
 
         data.hourly = build_hourly(nwp, now, data.ensemble)
         data.daily = build_daily(data.hourly)
+        data.twice_daily = build_twice_daily(data.hourly)
         data.current = build_current(data, now)
         return data
 
@@ -455,6 +460,81 @@ def build_daily(hourly: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return result
 
 
+def build_twice_daily(hourly: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Tag (06–18) / Nacht (18–06) Ortszeit."""
+    periods: dict[datetime, list[dict[str, Any]]] = {}
+    for h in hourly:
+        local = dt_util.as_local(datetime.fromisoformat(h["datetime"]))
+        if DAY_START_HOUR <= local.hour < DAY_END_HOUR:
+            start = local.replace(hour=DAY_START_HOUR, minute=0, second=0, microsecond=0)
+        else:
+            base = local if local.hour >= DAY_END_HOUR else local - timedelta(days=1)
+            start = base.replace(hour=DAY_END_HOUR, minute=0, second=0, microsecond=0)
+        periods.setdefault(start, []).append(h)
+
+    result = []
+    for start, hours in periods.items():
+        if len(hours) < 3:
+            continue
+        is_day = start.hour == DAY_START_HOUR
+        temps = [h["native_temperature"] for h in hours if h["native_temperature"] is not None]
+        condition = _worst([h["condition"] for h in hours if h["condition"]])
+        if not is_day and condition == "sunny":
+            condition = "clear-night"
+        winds = [h for h in hours if h["native_wind_speed"] is not None]
+        strongest = max(winds, key=lambda h: h["native_wind_speed"], default=None)
+        result.append(
+            {
+                "datetime": dt_util.as_utc(start).isoformat(),
+                "is_daytime": is_day,
+                "condition": condition,
+                # Tag: Höchstwert, Nacht: Tiefstwert (so zeigt es das Frontend an)
+                "native_temperature": (max if is_day else min)(temps, default=None),
+                "native_templow": min(temps, default=None),
+                "native_precipitation": _sum(h["native_precipitation"] for h in hours),
+                "precipitation_probability": _max(h["precipitation_probability"] for h in hours),
+                "humidity": _mean(h["humidity"] for h in hours),
+                "cloud_coverage": _mean(h["cloud_coverage"] for h in hours),
+                "native_wind_speed": strongest["native_wind_speed"] if strongest else None,
+                "wind_bearing": strongest["wind_bearing"] if strongest else None,
+                "native_wind_gust_speed": _max(h["native_wind_gust_speed"] for h in hours),
+            }
+        )
+    return result
+
+
+def nowcast_rain_window(
+    nc: TimeSeries | None, now: datetime
+) -> dict[str, datetime | None] | None:
+    """Beginn/Ende des nächsten Regens aus dem 15-min-Nowcast.
+
+    rr[i] ist die Menge im Intervall *vor* timestamps[i]. Liefert None ohne
+    Nowcast; start/end sind None, wenn im Horizont kein Beginn/Ende liegt.
+    """
+    if nc is None or not nc.timestamps:
+        return None
+    step = timedelta(minutes=15)
+    wet = [
+        (ts - step, ts, (nc.get("rr", i) or 0) >= NOWCAST_WET_15MIN)
+        for i, ts in enumerate(nc.timestamps)
+        if ts > now
+    ]
+    start = end = None
+    for begin, finish, is_wet in wet:
+        if start is None:
+            if is_wet:
+                start = max(begin, now)
+        elif not is_wet:
+            end = begin
+            break
+    return {
+        "start": start,
+        "end": end,
+        "raining_now": bool(wet) and wet[0][2],
+        "horizon": wet[-1][1] if wet else None,
+    }
+
+
 def build_current(data: GeoSphereData, now: datetime) -> dict[str, Any]:
     """Aktuelle Werte – Nowcast (1 km, 15 min) hat Vorrang vor NWP."""
     nwp = data.nwp
@@ -491,6 +571,7 @@ def build_current(data: GeoSphereData, now: datetime) -> dict[str, Any]:
             cur["wind_gust"] = nc.get("fx", j)
         # rr ist die Menge je 15-min-Intervall -> nächste Stunde = 4 Schritte
         cur["precipitation_next_hour"] = _sum(nc.get("rr", k) for k in range(j + 1, j + 5))
+    cur["rain_window"] = nowcast_rain_window(data.nowcast, now)
     return cur
 
 

@@ -16,6 +16,19 @@ Kein API-Key nötig. Daten: GeoSphere Austria, CC BY 4.0.
 | Wüstenstaub | `chem_dust-v1-1h-0p2deg` | Staubsäule (mg/m²) jetzt, Max. 24 h, Max. 5 Tage + Zeitpunkt |
 | Warnungen | warnungen.zamg.at | Warnstufe + Details als Attribut |
 
+## Für Automatisierungen
+
+| Entity | Logik |
+|---|---|
+| Regen in der nächsten Stunde | Nowcast sagt Regen (≥ 0,05 mm / 15 min) innerhalb 60 min voraus; ohne Nowcast: Regenwahrscheinlichkeit ≥ 50 % |
+| Regenbeginn / Regenende | Zeitstempel aus dem 15-min-Nowcast (ca. 3 h Horizont), leer wenn nicht im Horizont |
+| Frostgefahr heute Nacht | Tiefstwert bis 09:00 < 2 °C – auch wenn nur das 10. Perzentil des Ensembles darunter liegt |
+| Gewittergefahr (12 h) | Gewittersymbol oder CAPE ≥ 1000 J/kg mit ≥ 0,5 mm/h in den nächsten 12 h |
+| Bewässerung nötig | Wasserbilanz 7 Tage ≤ −10 mm und < 2 mm Regen in den nächsten 24 h erwartet |
+| Unwetterwarnung aktiv (+ je Typ) | aktive Warnung ab Stufe gelb; Attribute: Stufe, bis wann, nächste Warnung |
+
+Die Wetter-Entity bietet stündliche, tägliche und Tag/Nacht-Vorhersage (06–18 / 18–06 Uhr).
+
 ## Installation
 
 ### Über HACS (empfohlen)
