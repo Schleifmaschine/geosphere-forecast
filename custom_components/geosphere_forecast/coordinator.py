@@ -22,11 +22,16 @@ from .const import (
     CHEM_RESOURCE,
     CONDITION_SEVERITY,
     CONF_AIR_QUALITY,
+    CONF_CLIMATE,
     CONF_DUST,
     CONF_ENSEMBLE,
     CONF_INCA,
     CONF_NOWCAST,
+    CONF_SNOW,
+    CONF_STATION,
     CONF_WARNINGS,
+    DAILY_DAYS,
+    DAILY_REFRESH,
     DOMAIN,
     DUST_RESOURCE,
     ENSEMBLE_PARAMS,
@@ -40,9 +45,18 @@ from .const import (
     NWP_PARAMS,
     NWP_RESOURCE,
     PRECIP_THRESHOLD,
+    SNOW_PARAMS,
+    SNOW_RESOURCE,
+    SPARTACUS_PARAMS,
+    SPARTACUS_RESOURCE,
+    STATION_AUTO,
+    STATION_NONE,
     SLOW_REFRESH,
     SYMBOL_CONDITION,
+    TAWES_PARAMS,
     UPDATE_INTERVAL,
+    WINFORE_PARAMS,
+    WINFORE_RESOURCE,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -62,6 +76,27 @@ def wind_from_uv(u: float | None, v: float | None) -> tuple[float | None, float 
     speed = math.hypot(u, v)
     bearing = (math.degrees(math.atan2(-u, -v)) + 360) % 360
     return round(speed, 1), round(bearing)
+
+
+def distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Großkreisentfernung in km."""
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp, dl = p2 - p1, math.radians(lon2 - lon1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 6371 * 2 * math.asin(math.sqrt(a))
+
+
+def nearest_stations(
+    stations: list[dict[str, Any]], lat: float, lon: float, count: int = 15
+) -> list[tuple[dict[str, Any], float]]:
+    """Aktive Stationen nach Entfernung sortiert."""
+    ranked = [
+        (s, distance_km(lat, lon, s["lat"], s["lon"]))
+        for s in stations
+        if s.get("is_active", True)
+    ]
+    ranked.sort(key=lambda x: x[1])
+    return ranked[:count]
 
 
 def precip_probability(
@@ -105,6 +140,10 @@ class GeoSphereData:
     dust: TimeSeries | None = None
     ensemble: TimeSeries | None = None
     inca: TimeSeries | None = None
+    station: dict[str, Any] | None = None
+    winfore: TimeSeries | None = None
+    snowgrid: TimeSeries | None = None
+    spartacus: TimeSeries | None = None
     warnings: list[dict[str, Any]] | None = None
     hourly: list[dict[str, Any]] = field(default_factory=list)
     daily: list[dict[str, Any]] = field(default_factory=list)
@@ -136,6 +175,12 @@ class GeoSphereCoordinator(DataUpdateCoordinator[GeoSphereData]):
         self.use_dust = opts.get(CONF_DUST, True)
         self.use_ensemble = opts.get(CONF_ENSEMBLE, True)
         self.use_inca = opts.get(CONF_INCA, True)
+        self.use_climate = opts.get(CONF_CLIMATE, True)
+        self.use_snow = opts.get(CONF_SNOW, True)
+        self.station_option: str = opts.get(CONF_STATION, STATION_AUTO)
+        # Metadaten der gewählten Station (id, name, altitude, distance_km)
+        self.station_info: dict[str, Any] | None = None
+        self._daily_fetched: datetime | None = None
         self._slow_fetched: datetime | None = None
 
     async def _async_update_data(self) -> GeoSphereData:
@@ -212,6 +257,9 @@ class GeoSphereCoordinator(DataUpdateCoordinator[GeoSphereData]):
                 "INCA-Analyse",
             )
 
+        await self._update_station(data, prev)
+        await self._update_daily(data, prev, now)
+
         if self.use_warnings:
             data.warnings = await self._optional(
                 self.client.warnings(self.lat, self.lon),
@@ -223,6 +271,66 @@ class GeoSphereCoordinator(DataUpdateCoordinator[GeoSphereData]):
         data.daily = build_daily(data.hourly)
         data.current = build_current(data, now)
         return data
+
+    async def _update_station(self, data: GeoSphereData, prev: GeoSphereData | None) -> None:
+        """Messwerte der gewählten bzw. nächstgelegenen TAWES-Station."""
+        if self.station_option == STATION_NONE:
+            return
+        if self.station_info is None:
+            stations = await self._optional(self.client.stations(), None, "Stationsliste")
+            if not stations:
+                return
+            if self.station_option == STATION_AUTO:
+                ranked = nearest_stations(stations, self.lat, self.lon, 1)
+            else:
+                ranked = [
+                    (s, distance_km(self.lat, self.lon, s["lat"], s["lon"]))
+                    for s in stations
+                    if str(s["id"]) == self.station_option
+                ]
+            if not ranked:
+                return
+            station, dist = ranked[0]
+            self.station_info = {
+                "id": str(station["id"]),
+                "name": station["name"].title(),
+                "state": station.get("state"),
+                "altitude": station.get("altitude"),
+                "distance_km": round(dist, 1),
+            }
+        data.station = await self._optional(
+            self.client.station_current(self.station_info["id"], TAWES_PARAMS),
+            prev.station if prev else None,
+            "Stationsmesswerte",
+        )
+
+    async def _update_daily(
+        self, data: GeoSphereData, prev: GeoSphereData | None, now: datetime
+    ) -> None:
+        """Tägliche Rasterdaten (Verdunstung, Trockenheit, Schnee, Klima)."""
+        if not (self.use_climate or self.use_snow):
+            return
+        due = self._daily_fetched is None or now - self._daily_fetched >= DAILY_REFRESH
+        if not due and prev is not None:
+            data.winfore, data.spartacus, data.snowgrid = (
+                prev.winfore, prev.spartacus, prev.snowgrid
+            )
+            return
+        end = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        start = end - timedelta(days=DAILY_DAYS)
+        jobs = []
+        if self.use_climate:
+            jobs += [("winfore", WINFORE_RESOURCE, WINFORE_PARAMS),
+                     ("spartacus", SPARTACUS_RESOURCE, SPARTACUS_PARAMS)]
+        if self.use_snow:
+            jobs.append(("snowgrid", SNOW_RESOURCE, SNOW_PARAMS))
+        for attr, resource, params in jobs:
+            setattr(data, attr, await self._optional(
+                self.client.historical(resource, params, self.lat, self.lon, start, end),
+                getattr(prev, attr) if prev else None,
+                resource,
+            ))
+        self._daily_fetched = now
 
     async def _optional(self, coro: Any, fallback: Any, label: str) -> Any:
         try:

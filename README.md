@@ -10,6 +10,9 @@ Kein API-Key nötig. Daten: GeoSphere Austria, CC BY 4.0.
 | Luftqualität | `chem-v2-1h-3km`, `chem_aqi-v1-1d-3km` | NO₂, O₃, PM10, PM2.5, AQI |
 | Ensemble | `ensemble-v2-1h-1km` | Regenwahrscheinlichkeit (geschätzt aus 10./50./90. Perzentil), Bandbreite für Temperatur und Niederschlag |
 | INCA-Analyse | `inca-v1-1h-1km` | „gemessener“ Niederschlag (1 h / 24 h), Temperatur, Globalstrahlung am Standort, ca. 1 h verzögert |
+| Messstation | TAWES `tawes-v1-10min` | Messwerte der nächsten (oder gewählten) Station: Temperatur, Taupunkt, Feuchte, Wind, Druck, Niederschlag, Strahlung, Schneehöhe, Bodentemperatur |
+| Klima & Trockenheit | `winfore-v2-1d-1km`, `spartacus-v3-1d-1km` | Referenzverdunstung ET0, klimatische Wasserbilanz 7 Tage, SPEI 30/90/365, Temperaturabweichung vom Mittel 1991–2020 (ca. 2 Tage verzögert) |
+| Schneedecke | `snowgrid_cl-v2-1d-1km` | Schneehöhe und Schneelast am Standort (ca. 2 Tage verzögert) |
 | Wüstenstaub | `chem_dust-v1-1h-0p2deg` | Staubsäule (mg/m²) jetzt, Max. 24 h, Max. 5 Tage + Zeitpunkt |
 | Warnungen | warnungen.zamg.at | Warnstufe + Details als Attribut |
 

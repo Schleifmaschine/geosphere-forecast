@@ -28,7 +28,10 @@
           "warnings": "Weather warnings",
           "dust": "Desert dust forecast (Europe, 5 days)",
           "ensemble": "Ensemble (precipitation probability, range)",
-          "inca": "INCA analysis (observed precipitation, temperature, radiation)"
+          "inca": "INCA analysis (observed precipitation, temperature, radiation)",
+          "station": "Weather station (TAWES)",
+          "climate": "Climate & drought (evapotranspiration, SPEI, temperature anomaly)",
+          "snow": "Snow cover (depth, load)"
         }
       }
     }
@@ -151,6 +154,72 @@
       },
       "inca_global_radiation": {
         "name": "Global radiation (analysis)"
+      },
+      "et0": {
+        "name": "Reference evapotranspiration (ET0)"
+      },
+      "et0_7d": {
+        "name": "Reference evapotranspiration 7 days"
+      },
+      "precipitation_7d": {
+        "name": "Precipitation 7 days (analysis)"
+      },
+      "water_balance_7d": {
+        "name": "Climatic water balance 7 days"
+      },
+      "spei30": {
+        "name": "Drought index SPEI 30 days"
+      },
+      "spei90": {
+        "name": "Drought index SPEI 90 days"
+      },
+      "spei365": {
+        "name": "Drought index SPEI 365 days"
+      },
+      "temp_anomaly": {
+        "name": "Temperature anomaly"
+      },
+      "temp_anomaly_30d": {
+        "name": "Temperature anomaly 30 days"
+      },
+      "snow_depth": {
+        "name": "Snow depth (analysis)"
+      },
+      "snow_load": {
+        "name": "Snow load"
+      },
+      "station_temperature": {
+        "name": "Station temperature"
+      },
+      "station_dew_point": {
+        "name": "Station dew point"
+      },
+      "station_humidity": {
+        "name": "Station humidity"
+      },
+      "station_wind_speed": {
+        "name": "Station wind speed"
+      },
+      "station_wind_gust": {
+        "name": "Station wind gust"
+      },
+      "station_wind_bearing": {
+        "name": "Station wind bearing"
+      },
+      "station_pressure": {
+        "name": "Station pressure (sea level)"
+      },
+      "station_precipitation": {
+        "name": "Station precipitation 10 min"
+      },
+      "station_global_radiation": {
+        "name": "Station global radiation"
+      },
+      "station_snow_depth": {
+        "name": "Station snow depth"
+      },
+      "station_soil_temperature": {
+        "name": "Station soil temperature"
       }
     }
   }

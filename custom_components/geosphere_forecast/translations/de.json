@@ -28,7 +28,10 @@
           "warnings": "Unwetterwarnungen",
           "dust": "Wüstenstaub-Prognose (Europa, 5 Tage)",
           "ensemble": "Ensemble (Regenwahrscheinlichkeit, Bandbreite)",
-          "inca": "INCA-Analyse (gemessener Niederschlag, Temperatur, Strahlung)"
+          "inca": "INCA-Analyse (gemessener Niederschlag, Temperatur, Strahlung)",
+          "station": "Messstation (TAWES)",
+          "climate": "Klima & Trockenheit (Verdunstung, SPEI, Temperaturabweichung)",
+          "snow": "Schneedecke (Schneehöhe, Schneelast)"
         }
       }
     }
@@ -151,6 +154,72 @@
       },
       "inca_global_radiation": {
         "name": "Globalstrahlung (Analyse)"
+      },
+      "et0": {
+        "name": "Referenzverdunstung (ET0)"
+      },
+      "et0_7d": {
+        "name": "Referenzverdunstung 7 Tage"
+      },
+      "precipitation_7d": {
+        "name": "Niederschlag 7 Tage (Analyse)"
+      },
+      "water_balance_7d": {
+        "name": "Klimatische Wasserbilanz 7 Tage"
+      },
+      "spei30": {
+        "name": "Trockenheitsindex SPEI 30 Tage"
+      },
+      "spei90": {
+        "name": "Trockenheitsindex SPEI 90 Tage"
+      },
+      "spei365": {
+        "name": "Trockenheitsindex SPEI 365 Tage"
+      },
+      "temp_anomaly": {
+        "name": "Temperaturabweichung vom Klimamittel"
+      },
+      "temp_anomaly_30d": {
+        "name": "Temperaturabweichung 30 Tage"
+      },
+      "snow_depth": {
+        "name": "Schneehöhe (Analyse)"
+      },
+      "snow_load": {
+        "name": "Schneelast"
+      },
+      "station_temperature": {
+        "name": "Station Temperatur"
+      },
+      "station_dew_point": {
+        "name": "Station Taupunkt"
+      },
+      "station_humidity": {
+        "name": "Station Luftfeuchtigkeit"
+      },
+      "station_wind_speed": {
+        "name": "Station Windgeschwindigkeit"
+      },
+      "station_wind_gust": {
+        "name": "Station Windspitze"
+      },
+      "station_wind_bearing": {
+        "name": "Station Windrichtung"
+      },
+      "station_pressure": {
+        "name": "Station Luftdruck (reduziert)"
+      },
+      "station_precipitation": {
+        "name": "Station Niederschlag 10 min"
+      },
+      "station_global_radiation": {
+        "name": "Station Globalstrahlung"
+      },
+      "station_snow_depth": {
+        "name": "Station Schneehöhe"
+      },
+      "station_soil_temperature": {
+        "name": "Station Bodentemperatur"
       }
     }
   }

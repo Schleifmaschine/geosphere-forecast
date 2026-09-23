@@ -9,7 +9,7 @@ from typing import Any
 
 import aiohttp
 
-from .const import API_BASE, WARNINGS_URL
+from .const import API_BASE, STATION_URL, WARNINGS_URL
 
 TIMEOUT = aiohttp.ClientTimeout(total=30)
 
@@ -104,6 +104,29 @@ class GeoSphereClient:
             timestamps=[datetime.fromisoformat(t) for t in data["timestamps"]],
             values={name: p.get("data", []) for name, p in raw.items()},
         )
+
+    async def stations(self) -> list[dict[str, Any]]:
+        """Alle TAWES-Stationen (Metadaten)."""
+        data = await self._get_json(f"{STATION_URL}/metadata", [])
+        return data.get("stations", [])
+
+    async def station_current(
+        self, station_id: str, parameters: list[str]
+    ) -> dict[str, Any]:
+        """Aktuelle 10-min-Messwerte einer Station."""
+        params = [("parameters", p) for p in parameters]
+        params.append(("station_ids", station_id))
+        data = await self._get_json(STATION_URL, params)
+        features = data.get("features") or []
+        if not features or not data.get("timestamps"):
+            raise GeoSphereError(f"Keine Messwerte für Station {station_id}")
+        raw = features[0]["properties"]["parameters"]
+        return {
+            "time": datetime.fromisoformat(data["timestamps"][-1]),
+            "values": {
+                name: (p.get("data") or [None])[-1] for name, p in raw.items()
+            },
+        }
 
     async def warnings(self, lat: float, lon: float) -> list[dict[str, Any]]:
         """Aktive Wetterwarnungen für einen Punkt."""

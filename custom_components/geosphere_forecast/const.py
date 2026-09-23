@@ -8,6 +8,7 @@ DOMAIN = "geosphere_forecast"
 ATTRIBUTION = "Daten: GeoSphere Austria (CC BY 4.0)"
 
 API_BASE = "https://dataset.api.hub.geosphere.at/v1/timeseries"
+STATION_URL = "https://dataset.api.hub.geosphere.at/v1/station/current/tawes-v1-10min"
 WARNINGS_URL = "https://warnungen.zamg.at/wsapp/api/getWarningsForCoords"
 
 # Datensätze
@@ -18,6 +19,10 @@ AQI_RESOURCE = "chem_aqi-v1-1d-3km"
 DUST_RESOURCE = "chem_dust-v1-1h-0p2deg"
 ENSEMBLE_RESOURCE = "ensemble-v2-1h-1km"
 INCA_RESOURCE = "inca-v1-1h-1km"  # Analyse (historical), ca. 1 h verzögert
+# Tägliche Rasterdaten (1 km), ca. 2 Tage verzögert
+WINFORE_RESOURCE = "winfore-v2-1d-1km"
+SNOW_RESOURCE = "snowgrid_cl-v2-1d-1km"
+SPARTACUS_RESOURCE = "spartacus-v3-1d-1km"
 
 NWP_PARAMS = [
     "2t", "2r", "10u", "10v", "10fg", "msl", "tcc", "tp", "rain", "sf",
@@ -28,6 +33,11 @@ CHEM_PARAMS = ["no2surf", "o3surf", "pm10surf", "pm25surf"]
 ENSEMBLE_PARAMS = ["2t_p10", "2t_p90", "tp_p10", "tp_p50", "tp_p90", "10fg_p90"]
 INCA_PARAMS = ["RR", "T2M", "GL"]
 INCA_HOURS = 24
+TAWES_PARAMS = ["TL", "TP", "RF", "FFAM", "FFX", "DD", "PRED", "RR", "GLOW", "SCHNEE", "TB1"]
+WINFORE_PARAMS = ["ET0", "SPEI30", "SPEI90", "SPEI365"]
+SNOW_PARAMS = ["snow_depth", "swe_tot"]
+SPARTACUS_PARAMS = ["RR", "TM24a_1991_2020"]
+DAILY_DAYS = 35
 # Schwelle für "es regnet" bei der Wahrscheinlichkeitsschätzung (mm/h)
 PRECIP_THRESHOLD = 0.1
 
@@ -41,10 +51,17 @@ CONF_WARNINGS = "warnings"
 CONF_DUST = "dust"
 CONF_ENSEMBLE = "ensemble"
 CONF_INCA = "inca"
+CONF_STATION = "station"
+CONF_CLIMATE = "climate"
+CONF_SNOW = "snow"
+STATION_AUTO = "auto"
+STATION_NONE = "none"
 
 UPDATE_INTERVAL = timedelta(minutes=15)
 # NWP/Chemie werden nur alle 3 h bzw. 1x täglich neu gerechnet
 SLOW_REFRESH = timedelta(minutes=60)
+# Tagesdaten (WINFORE, SNOWGRID, SPARTACUS) ändern sich höchstens 1x täglich
+DAILY_REFRESH = timedelta(hours=6)
 
 # GeoSphere Wettersymbol (sy, 1–32) -> HA condition
 SYMBOL_CONDITION: dict[int, str] = {
@@ -86,3 +103,14 @@ WARNING_TYPES: dict[int, str] = {
     5: "Gewitter", 6: "Hitze", 7: "Kälte",
 }
 WARNING_LEVELS: dict[int, str] = {0: "keine", 1: "gelb", 2: "orange", 3: "rot"}
+
+# SPEI-Klassen (Untergrenze, Bezeichnung)
+SPEI_CLASSES: list[tuple[float, str]] = [
+    (2.0, "extrem feucht"),
+    (1.5, "sehr feucht"),
+    (1.0, "mäßig feucht"),
+    (-1.0, "normal"),
+    (-1.5, "mäßig trocken"),
+    (-2.0, "sehr trocken"),
+    (float("-inf"), "extrem trocken"),
+]

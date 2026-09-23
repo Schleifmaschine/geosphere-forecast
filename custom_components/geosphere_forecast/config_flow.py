@@ -15,21 +15,33 @@ from homeassistant.config_entries import (
 from homeassistant.const import CONF_LATITUDE, CONF_LOCATION, CONF_LONGITUDE, CONF_NAME
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.selector import LocationSelector, TextSelector
+from homeassistant.helpers.selector import (
+    LocationSelector,
+    SelectOptionDict,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+    TextSelector,
+)
 
 from .api import GeoSphereClient, GeoSphereError
 from .const import (
     CONF_AIR_QUALITY,
+    CONF_CLIMATE,
     CONF_DUST,
     CONF_ENSEMBLE,
     CONF_INCA,
     CONF_NOWCAST,
+    CONF_SNOW,
+    CONF_STATION,
     CONF_WARNINGS,
     DOMAIN,
     NWP_BBOX,
     NWP_RESOURCE,
+    STATION_AUTO,
+    STATION_NONE,
 )
-from .coordinator import in_bbox
+from .coordinator import in_bbox, nearest_stations
 
 
 class GeoSphereConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -92,12 +104,34 @@ class GeoSphereOptionsFlow(OptionsFlow):
             return self.async_create_entry(data=user_input)
 
         opts = self.config_entry.options
+        station_options = [
+            SelectOptionDict(value=STATION_AUTO, label="Automatisch (nächste Station)"),
+            SelectOptionDict(value=STATION_NONE, label="Keine Station"),
+        ]
+        client = GeoSphereClient(async_get_clientsession(self.hass))
+        try:
+            stations = await client.stations()
+        except GeoSphereError:
+            stations = []
+        data = self.config_entry.data
+        for station, dist in nearest_stations(stations, data[CONF_LATITUDE], data[CONF_LONGITUDE]):
+            station_options.append(
+                SelectOptionDict(
+                    value=str(station["id"]),
+                    label=f"{station['name'].title()} ({dist:.1f} km, {station.get('altitude', 0):.0f} m)",
+                )
+            )
         schema = vol.Schema(
             {
+                vol.Required(CONF_STATION, default=opts.get(CONF_STATION, STATION_AUTO)): SelectSelector(
+                    SelectSelectorConfig(options=station_options, mode=SelectSelectorMode.DROPDOWN)
+                ),
                 vol.Required(CONF_NOWCAST, default=opts.get(CONF_NOWCAST, True)): bool,
                 vol.Required(CONF_ENSEMBLE, default=opts.get(CONF_ENSEMBLE, True)): bool,
                 vol.Required(CONF_INCA, default=opts.get(CONF_INCA, True)): bool,
                 vol.Required(CONF_AIR_QUALITY, default=opts.get(CONF_AIR_QUALITY, True)): bool,
+                vol.Required(CONF_CLIMATE, default=opts.get(CONF_CLIMATE, True)): bool,
+                vol.Required(CONF_SNOW, default=opts.get(CONF_SNOW, True)): bool,
                 vol.Required(CONF_DUST, default=opts.get(CONF_DUST, True)): bool,
                 vol.Required(CONF_WARNINGS, default=opts.get(CONF_WARNINGS, True)): bool,
             }

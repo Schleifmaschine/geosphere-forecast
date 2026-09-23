@@ -27,7 +27,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from .const import SYMBOL_TEXT, WARNING_LEVELS, WARNING_TYPES
+from .api import TimeSeries
+from .const import SPEI_CLASSES, SYMBOL_TEXT, WARNING_LEVELS, WARNING_TYPES
 from .coordinator import GeoSphereConfigEntry, GeoSphereCoordinator, GeoSphereData, _sum
 from .entity import GeoSphereEntity
 
@@ -126,6 +127,86 @@ def _inca_attrs(d: Data) -> dict[str, Any]:
     if d.inca is None or not d.inca.timestamps:
         return {}
     return {"measured_at": d.inca.timestamps[-1].isoformat()}
+
+
+def _station(param: str, scale: float = 1) -> Callable[[Data], Any]:
+    def fn(d: Data) -> Any:
+        if d.station is None:
+            return None
+        value = d.station["values"].get(param)
+        return round(value * scale, 1) if value is not None else None
+
+    return fn
+
+
+def _daily_series(d: Data, attr: str, param: str) -> list[tuple[Any, float]]:
+    """(Datum, Wert) aller gültigen Tageswerte eines Datensatzes."""
+    ts: TimeSeries | None = getattr(d, attr)
+    if ts is None:
+        return []
+    return [
+        (t, v) for i, t in enumerate(ts.timestamps) if (v := ts.get(param, i)) is not None
+    ]
+
+
+def _daily_last(attr: str, param: str, scale: float = 1) -> Callable[[Data], Any]:
+    def fn(d: Data) -> Any:
+        series = _daily_series(d, attr, param)
+        return round(series[-1][1] * scale, 2) if series else None
+
+    return fn
+
+
+def _daily_sum(attr: str, param: str, days: int) -> Callable[[Data], Any]:
+    def fn(d: Data) -> Any:
+        series = _daily_series(d, attr, param)
+        return _sum(v for _, v in series[-days:]) if series else None
+
+    return fn
+
+
+def _daily_mean(attr: str, param: str, days: int) -> Callable[[Data], Any]:
+    def fn(d: Data) -> Any:
+        vals = [v for _, v in _daily_series(d, attr, param)[-days:]]
+        return round(sum(vals) / len(vals), 1) if vals else None
+
+    return fn
+
+
+def _daily_date(attr: str, param: str, days: int = 1) -> Callable[[Data], dict[str, Any]]:
+    """Attribute: Datum des (letzten) Tageswerts bzw. Zeitraum."""
+
+    def fn(d: Data) -> dict[str, Any]:
+        series = _daily_series(d, attr, param)[-days:]
+        if not series:
+            return {}
+        if days == 1:
+            return {"date": series[-1][0].date().isoformat()}
+        return {"from": series[0][0].date().isoformat(), "to": series[-1][0].date().isoformat()}
+
+    return fn
+
+
+def _water_balance(d: Data) -> Any:
+    """Niederschlag minus Referenzverdunstung über dieselben 7 Tage."""
+    et0 = dict(_daily_series(d, "winfore", "ET0"))
+    rr = dict(_daily_series(d, "spartacus", "RR"))
+    days = sorted(set(et0) & set(rr))[-7:]
+    if not days:
+        return None
+    return round(sum(rr[t] - et0[t] for t in days), 1)
+
+
+def _spei(param: str) -> Callable[[Data], dict[str, Any]]:
+    def fn(d: Data) -> dict[str, Any]:
+        series = _daily_series(d, "winfore", param)
+        if not series:
+            return {}
+        value = series[-1][1]
+        label = next(name for limit, name in SPEI_CLASSES if value >= limit)
+        return {"date": series[-1][0].date().isoformat(), "classification": label}
+
+    return fn
 
 
 def _chem_now(param: str) -> Callable[[Data], Any]:
@@ -253,6 +334,18 @@ def _ens(c: GeoSphereCoordinator) -> bool:
 
 def _inca(c: GeoSphereCoordinator) -> bool:
     return c.use_inca
+
+
+def _has_station(c: GeoSphereCoordinator) -> bool:
+    return c.station_info is not None
+
+
+def _climate(c: GeoSphereCoordinator) -> bool:
+    return c.use_climate
+
+
+def _snow(c: GeoSphereCoordinator) -> bool:
+    return c.use_snow
 
 
 def _warn(c: GeoSphereCoordinator) -> bool:
@@ -435,6 +528,65 @@ SENSORS: tuple[GeoSphereSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=_inca_latest("GL"), attr_fn=_inca_attrs, enabled_fn=_inca,
     ),
+    # --- Klima & Trockenheit (WINFORE / SPARTACUS, ca. 2 Tage verzögert) ---
+    GeoSphereSensorDescription(
+        key="et0", translation_key="et0", native_unit_of_measurement=UnitOfPrecipitationDepth.MILLIMETERS,
+        icon="mdi:water-percent", suggested_display_precision=1,
+        value_fn=_daily_last("winfore", "ET0"), attr_fn=_daily_date("winfore", "ET0"),
+        enabled_fn=_climate,
+    ),
+    GeoSphereSensorDescription(
+        key="et0_7d", translation_key="et0_7d", native_unit_of_measurement=UnitOfPrecipitationDepth.MILLIMETERS,
+        icon="mdi:water-percent", suggested_display_precision=1,
+        value_fn=_daily_sum("winfore", "ET0", 7), attr_fn=_daily_date("winfore", "ET0", 7),
+        enabled_fn=_climate,
+    ),
+    GeoSphereSensorDescription(
+        key="precipitation_7d", translation_key="precipitation_7d", **PRECIP,
+        value_fn=_daily_sum("spartacus", "RR", 7), attr_fn=_daily_date("spartacus", "RR", 7),
+        enabled_fn=_climate,
+    ),
+    GeoSphereSensorDescription(
+        key="water_balance_7d", translation_key="water_balance_7d",
+        native_unit_of_measurement=UnitOfPrecipitationDepth.MILLIMETERS, icon="mdi:scale-balance",
+        suggested_display_precision=1,
+        value_fn=_water_balance, attr_fn=_daily_date("winfore", "ET0", 7), enabled_fn=_climate,
+    ),
+    *(
+        GeoSphereSensorDescription(
+            key=f"spei{n}", translation_key=f"spei{n}", icon="mdi:water-alert",
+            state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1,
+            value_fn=_daily_last("winfore", f"SPEI{n}"), attr_fn=_spei(f"SPEI{n}"),
+            enabled_fn=_climate,
+        )
+        for n in (30, 90, 365)
+    ),
+    GeoSphereSensorDescription(
+        key="temp_anomaly", translation_key="temp_anomaly", native_unit_of_measurement="K",
+        icon="mdi:thermometer-plus", suggested_display_precision=1,
+        value_fn=_daily_last("spartacus", "TM24a_1991_2020"),
+        attr_fn=_daily_date("spartacus", "TM24a_1991_2020"), enabled_fn=_climate,
+    ),
+    GeoSphereSensorDescription(
+        key="temp_anomaly_30d", translation_key="temp_anomaly_30d", native_unit_of_measurement="K",
+        icon="mdi:thermometer-plus", suggested_display_precision=1,
+        value_fn=_daily_mean("spartacus", "TM24a_1991_2020", 30),
+        attr_fn=_daily_date("spartacus", "TM24a_1991_2020", 30), enabled_fn=_climate,
+    ),
+    # --- Schneedecke (SNOWGRID, ca. 2 Tage verzögert) ---
+    GeoSphereSensorDescription(
+        key="snow_depth", translation_key="snow_depth", device_class=SensorDeviceClass.DISTANCE,
+        native_unit_of_measurement=UnitOfLength.CENTIMETERS, icon="mdi:snowflake",
+        state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=0,
+        value_fn=_daily_last("snowgrid", "snow_depth", 100),
+        attr_fn=_daily_date("snowgrid", "snow_depth"), enabled_fn=_snow,
+    ),
+    GeoSphereSensorDescription(
+        key="snow_load", translation_key="snow_load", native_unit_of_measurement="kg/m²",
+        icon="mdi:home-roof", state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=0,
+        value_fn=_daily_last("snowgrid", "swe_tot"),
+        attr_fn=_daily_date("snowgrid", "swe_tot"), enabled_fn=_snow,
+    ),
     # --- Luftqualität ---
     GeoSphereSensorDescription(
         key="aqi_today", translation_key="aqi_today", device_class=SensorDeviceClass.AQI,
@@ -474,6 +626,58 @@ SENSORS: tuple[GeoSphereSensorDescription, ...] = (
         key="dust_max_5d", translation_key="dust_max_5d", native_unit_of_measurement=DUST_UNIT,
         icon="mdi:weather-dust", suggested_display_precision=1,
         value_fn=_dust_max(None), attr_fn=_dust_peak_attrs, enabled_fn=_dust,
+    ),
+    # --- Messstation (TAWES, 10 min) ---
+    GeoSphereSensorDescription(
+        key="station_temperature", translation_key="station_temperature", **TEMP,
+        state_class=SensorStateClass.MEASUREMENT, value_fn=_station("TL"), enabled_fn=_has_station,
+    ),
+    GeoSphereSensorDescription(
+        key="station_dew_point", translation_key="station_dew_point", **TEMP,
+        state_class=SensorStateClass.MEASUREMENT, value_fn=_station("TP"), enabled_fn=_has_station,
+    ),
+    GeoSphereSensorDescription(
+        key="station_humidity", translation_key="station_humidity",
+        device_class=SensorDeviceClass.HUMIDITY, native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT, value_fn=_station("RF"), enabled_fn=_has_station,
+    ),
+    GeoSphereSensorDescription(
+        key="station_wind_speed", translation_key="station_wind_speed", **WIND,
+        value_fn=_station("FFAM"), enabled_fn=_has_station,
+    ),
+    GeoSphereSensorDescription(
+        key="station_wind_gust", translation_key="station_wind_gust", **WIND,
+        value_fn=_station("FFX"), enabled_fn=_has_station,
+    ),
+    GeoSphereSensorDescription(
+        key="station_wind_bearing", translation_key="station_wind_bearing",
+        native_unit_of_measurement=DEGREE, icon="mdi:compass-outline",
+        value_fn=_station("DD"), enabled_fn=_has_station,
+    ),
+    GeoSphereSensorDescription(
+        key="station_pressure", translation_key="station_pressure",
+        device_class=SensorDeviceClass.ATMOSPHERIC_PRESSURE, native_unit_of_measurement=UnitOfPressure.HPA,
+        state_class=SensorStateClass.MEASUREMENT, value_fn=_station("PRED"), enabled_fn=_has_station,
+    ),
+    GeoSphereSensorDescription(
+        key="station_precipitation", translation_key="station_precipitation", **PRECIP,
+        value_fn=_station("RR"), enabled_fn=_has_station,
+    ),
+    GeoSphereSensorDescription(
+        key="station_global_radiation", translation_key="station_global_radiation",
+        device_class=SensorDeviceClass.IRRADIANCE,
+        native_unit_of_measurement=UnitOfIrradiance.WATTS_PER_SQUARE_METER,
+        state_class=SensorStateClass.MEASUREMENT, value_fn=_station("GLOW"), enabled_fn=_has_station,
+    ),
+    GeoSphereSensorDescription(
+        key="station_snow_depth", translation_key="station_snow_depth",
+        device_class=SensorDeviceClass.DISTANCE, native_unit_of_measurement=UnitOfLength.CENTIMETERS,
+        icon="mdi:snowflake", state_class=SensorStateClass.MEASUREMENT,
+        value_fn=_station("SCHNEE"), enabled_fn=_has_station,
+    ),
+    GeoSphereSensorDescription(
+        key="station_soil_temperature", translation_key="station_soil_temperature", **TEMP,
+        state_class=SensorStateClass.MEASUREMENT, value_fn=_station("TB1"), enabled_fn=_has_station,
     ),
     # --- Warnungen ---
     GeoSphereSensorDescription(
@@ -520,4 +724,11 @@ class GeoSphereSensor(GeoSphereEntity, SensorEntity):
             attrs["forecast"] = desc.forecast_fn(self.coordinator.data)
         if desc.attr_fn:
             attrs.update(desc.attr_fn(self.coordinator.data))
+        if desc.key.startswith("station_") and (info := self.coordinator.station_info):
+            attrs["station"] = info["name"]
+            attrs["station_id"] = info["id"]
+            attrs["station_altitude"] = info["altitude"]
+            attrs["station_distance_km"] = info["distance_km"]
+            if self.coordinator.data.station:
+                attrs["measured_at"] = self.coordinator.data.station["time"].isoformat()
         return attrs or None
