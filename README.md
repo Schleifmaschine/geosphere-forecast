@@ -42,3 +42,7 @@ series:
     data_generator: |
       return entity.attributes.forecast.map(p => [new Date(p.datetime).getTime(), p.value]);
 ```
+
+---
+Inoffizielles Community-Projekt, nicht mit GeoSphere Austria verbunden. Name und Logo sind Marken von GeoSphere Austria
+(Brand-Bilder aus dem [Home-Assistant-Brands-Repo](https://github.com/home-assistant/brands)).
