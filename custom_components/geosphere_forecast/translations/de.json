@@ -1,0 +1,137 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "GeoSphere Austria Vorhersage",
+        "description": "Standort für die Vorhersage wählen (Österreich und Umgebung).",
+        "data": {
+          "name": "Name",
+          "location": "Standort"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Keine Verbindung zur GeoSphere API.",
+      "outside_area": "Der Standort liegt außerhalb des Modellgebiets (43–51,5° N, 5–22,5° O)."
+    },
+    "abort": {
+      "already_configured": "Dieser Standort ist bereits eingerichtet."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Datenquellen",
+        "data": {
+          "nowcast": "Nowcast (15 min, 1 km) für aktuelle Werte",
+          "air_quality": "Luftqualität (NO₂, O₃, Feinstaub, AQI)",
+          "warnings": "Unwetterwarnungen",
+          "dust": "Wüstenstaub-Prognose (Europa, 5 Tage)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "temperature": {
+        "name": "Temperatur"
+      },
+      "dew_point": {
+        "name": "Taupunkt"
+      },
+      "humidity": {
+        "name": "Luftfeuchtigkeit"
+      },
+      "wind_speed": {
+        "name": "Windgeschwindigkeit"
+      },
+      "wind_gust": {
+        "name": "Windböen"
+      },
+      "wind_bearing": {
+        "name": "Windrichtung"
+      },
+      "pressure": {
+        "name": "Luftdruck"
+      },
+      "cloud_coverage": {
+        "name": "Bewölkung"
+      },
+      "global_radiation": {
+        "name": "Globalstrahlung"
+      },
+      "snow_limit": {
+        "name": "Schneefallgrenze"
+      },
+      "cape": {
+        "name": "Gewitterenergie (CAPE)"
+      },
+      "weather_text": {
+        "name": "Wetterlage"
+      },
+      "precipitation_next_hour": {
+        "name": "Niederschlag nächste Stunde"
+      },
+      "precipitation_today": {
+        "name": "Niederschlag heute (Rest)"
+      },
+      "precipitation_24h": {
+        "name": "Niederschlag nächste 24 h"
+      },
+      "snowfall_24h": {
+        "name": "Neuschnee (Wasseräquivalent) 24 h"
+      },
+      "precipitation_tomorrow": {
+        "name": "Niederschlag morgen"
+      },
+      "temp_max_today": {
+        "name": "Höchsttemperatur heute"
+      },
+      "temp_min_today": {
+        "name": "Tiefsttemperatur heute"
+      },
+      "temp_max_tomorrow": {
+        "name": "Höchsttemperatur morgen"
+      },
+      "temp_min_tomorrow": {
+        "name": "Tiefsttemperatur morgen"
+      },
+      "sunshine_today": {
+        "name": "Sonnenstunden heute"
+      },
+      "sunshine_tomorrow": {
+        "name": "Sonnenstunden morgen"
+      },
+      "aqi_today": {
+        "name": "Luftqualitätsindex heute"
+      },
+      "aqi_tomorrow": {
+        "name": "Luftqualitätsindex morgen"
+      },
+      "no2surf": {
+        "name": "Stickstoffdioxid"
+      },
+      "o3surf": {
+        "name": "Ozon"
+      },
+      "pm10surf": {
+        "name": "Feinstaub PM10"
+      },
+      "pm25surf": {
+        "name": "Feinstaub PM2.5"
+      },
+      "warning_level": {
+        "name": "Warnstufe"
+      },
+      "dust_load": {
+        "name": "Wüstenstaub (Säule)"
+      },
+      "dust_max_24h": {
+        "name": "Wüstenstaub Maximum 24 h"
+      },
+      "dust_max_5d": {
+        "name": "Wüstenstaub Maximum 5 Tage"
+      }
+    }
+  }
+}

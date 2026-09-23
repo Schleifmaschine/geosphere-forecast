@@ -1,0 +1,137 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "GeoSphere Austria Forecast",
+        "description": "Choose the forecast location (Austria and surroundings).",
+        "data": {
+          "name": "Name",
+          "location": "Location"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to the GeoSphere API.",
+      "outside_area": "Location is outside the model domain (43–51.5° N, 5–22.5° E)."
+    },
+    "abort": {
+      "already_configured": "This location is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Data sources",
+        "data": {
+          "nowcast": "Nowcast (15 min, 1 km) for current values",
+          "air_quality": "Air quality (NO₂, O₃, particulates, AQI)",
+          "warnings": "Weather warnings",
+          "dust": "Desert dust forecast (Europe, 5 days)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "temperature": {
+        "name": "Temperature"
+      },
+      "dew_point": {
+        "name": "Dew point"
+      },
+      "humidity": {
+        "name": "Humidity"
+      },
+      "wind_speed": {
+        "name": "Wind speed"
+      },
+      "wind_gust": {
+        "name": "Wind gust"
+      },
+      "wind_bearing": {
+        "name": "Wind bearing"
+      },
+      "pressure": {
+        "name": "Pressure"
+      },
+      "cloud_coverage": {
+        "name": "Cloud coverage"
+      },
+      "global_radiation": {
+        "name": "Global radiation"
+      },
+      "snow_limit": {
+        "name": "Snow limit"
+      },
+      "cape": {
+        "name": "CAPE"
+      },
+      "weather_text": {
+        "name": "Weather"
+      },
+      "precipitation_next_hour": {
+        "name": "Precipitation next hour"
+      },
+      "precipitation_today": {
+        "name": "Precipitation rest of today"
+      },
+      "precipitation_24h": {
+        "name": "Precipitation next 24 h"
+      },
+      "snowfall_24h": {
+        "name": "Snowfall (water equiv.) 24 h"
+      },
+      "precipitation_tomorrow": {
+        "name": "Precipitation tomorrow"
+      },
+      "temp_max_today": {
+        "name": "Max temperature today"
+      },
+      "temp_min_today": {
+        "name": "Min temperature today"
+      },
+      "temp_max_tomorrow": {
+        "name": "Max temperature tomorrow"
+      },
+      "temp_min_tomorrow": {
+        "name": "Min temperature tomorrow"
+      },
+      "sunshine_today": {
+        "name": "Sunshine hours today"
+      },
+      "sunshine_tomorrow": {
+        "name": "Sunshine hours tomorrow"
+      },
+      "aqi_today": {
+        "name": "Air quality index today"
+      },
+      "aqi_tomorrow": {
+        "name": "Air quality index tomorrow"
+      },
+      "no2surf": {
+        "name": "Nitrogen dioxide"
+      },
+      "o3surf": {
+        "name": "Ozone"
+      },
+      "pm10surf": {
+        "name": "PM10"
+      },
+      "pm25surf": {
+        "name": "PM2.5"
+      },
+      "warning_level": {
+        "name": "Warning level"
+      },
+      "dust_load": {
+        "name": "Desert dust load"
+      },
+      "dust_max_24h": {
+        "name": "Desert dust max 24 h"
+      },
+      "dust_max_5d": {
+        "name": "Desert dust max 5 days"
+      }
+    }
+  }
+}

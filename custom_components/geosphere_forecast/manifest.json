@@ -1,0 +1,14 @@
+{
+  "domain": "geosphere_forecast",
+  "name": "GeoSphere Austria Forecast",
+  "codeowners": [
+    "@Schleifmaschine"
+  ],
+  "config_flow": true,
+  "documentation": "https://github.com/Schleifmaschine/geosphere-forecast",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/Schleifmaschine/geosphere-forecast/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}
